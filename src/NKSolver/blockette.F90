@@ -68,7 +68,7 @@ module blockette
 contains
 
   subroutine blocketteRes(useDissApprox, useViscApprox, useUpdateDt, useFlowRes, useTurbRes, useSpatial, &
-       useStoreWall, famLists, funcValues, forces, bcDataNames, bcDataValues, bcDataFamLists)
+       useStoreWall, useUpdateVars,famLists, funcValues, forces, bcDataNames, bcDataValues, bcDataFamLists)
 
     ! Copy the values from blockPointers (assumed set) into the
     ! blockette
@@ -101,7 +101,7 @@ contains
 
     ! Input/Output
     logical, intent(in), optional :: useDissApprox, useViscApprox, useUpdateDt, useFlowRes
-    logical, intent(in), optional :: useTurbRes, useSpatial, useStoreWall
+    logical, intent(in), optional :: useTurbRes, useSpatial, useStoreWall, useUpdateVars
     integer(kind=intType), optional, dimension(:, :), intent(in) :: famLists
     real(kind=realType), optional, dimension(:, :), intent(out) :: funcValues
     character, optional, dimension(:, :), intent(in) :: bcDataNames
@@ -110,7 +110,7 @@ contains
     real(kind=realType), intent(out), optional, dimension(:, :, :) :: forces
 
     ! Misc
-    logical :: dissApprox, viscApprox, updateDt, flowRes, turbRes, spatial, storeWall
+    logical :: dissApprox, viscApprox, updateDt, flowRes, turbRes, spatial, storeWall, updateVars
     integer(kind=intType) :: nn, sps, fSize, lstart, lend, iRegion
     real(kind=realType) ::  pLocal
 
@@ -124,6 +124,7 @@ contains
     turbRes = .True.
     spatial = .False.
     storeWall = .True.
+    updateVars = .True.
 
     ! Parse the input variables
     if (present(useDissApprox)) then
@@ -154,71 +155,77 @@ contains
        storeWall = useStoreWall
     end if
 
-    ! Spatial-only updates first
-    if (spatial) then
-       call adjustInflowAngle()
-
-       ! Update all the BCData
-       call referenceState
-       if (present(bcDataNames)) then
-          do sps=1,nTimeIntervalsSpectral
-             call setBCData(bcDataNames, bcDataValues, bcDataFamLists, sps, &
-                  size(bcDataValues), size(bcDataFamLIsts, 2))
-          end do
-          call setBCDataFineGrid(.true.)
-       end if
-
-       do sps=1, nTimeIntervalsSpectral
-          do nn=1, nDom
-             call setPointers(nn, currentLevel, sps)
-             call xhalo_block()
-          end do
-       end do
-
-       ! Now exchange the coordinates (fine level only)
-       call exchangecoor(1)
-
-       do sps=1, nTimeIntervalsSpectral
-          ! Update overset connectivity if necessary
-          if (oversetPresent .and. &
-               (oversetUpdateMode == updateFast .or. &
-               oversetUpdateMode == updateFull)) then
-             call updateOversetConnectivity(1_intType, sps)
-          end if
-       end do
+    if (present(useUpdateVars)) then
+       updateVars = useUpdateVars
     end if
 
-    ! Compute the required derived values and apply the BCs
-    do sps=1,nTimeIntervalsSpectral
-       do nn=1,nDom
-          call setPointers(nn, currentLevel, sps)
+    if (updateVars) then
+        ! Spatial-only updates first
+        if (spatial) then
+           call adjustInflowAngle()
 
-          if (spatial) then
-             call volume_block
-             call metric_block
-             call boundaryNormals
+           ! Update all the BCData
+           call referenceState
+           if (present(bcDataNames)) then
+              do sps=1,nTimeIntervalsSpectral
+                 call setBCData(bcDataNames, bcDataValues, bcDataFamLists, sps, &
+                      size(bcDataValues), size(bcDataFamLIsts, 2))
+              end do
+              call setBCDataFineGrid(.true.)
+           end if
 
-             if (equations == RANSEquations .and. useApproxWallDistance) then
-                call updateWallDistancesQuickly(nn, 1, sps)
-             end if
-          end if
+           do sps=1, nTimeIntervalsSpectral
+              do nn=1, nDom
+                 call setPointers(nn, currentLevel, sps)
+                 call xhalo_block()
+              end do
+           end do
 
-          ! Compute the pressures/viscositites
-          call computePressureSimple(.False.)
+           ! Now exchange the coordinates (fine level only)
+           call exchangecoor(1)
 
-          ! Compute Laminar/eddy viscosity if required
-          call computeLamViscosity(.False.)
-          call computeEddyViscosity(.False.)
+           do sps=1, nTimeIntervalsSpectral
+              ! Update overset connectivity if necessary
+              if (oversetPresent .and. &
+                   (oversetUpdateMode == updateFast .or. &
+                   oversetUpdateMode == updateFull)) then
+                 call updateOversetConnectivity(1_intType, sps)
+              end if
+           end do
+        end if
 
-          ! Make sure to call the turb BC's first incase we need to
-          ! correct for K
-          if( equations == RANSEquations .and. turbRes) then
-             call BCTurbTreatment
-             call applyAllTurbBCthisblock(.True.)
-          end if
-          call applyAllBC_block(.True.)
-       end do
-    end do
+        ! Compute the required derived values and apply the BCs
+        do sps=1,nTimeIntervalsSpectral
+           do nn=1,nDom
+              call setPointers(nn, currentLevel, sps)
+
+              if (spatial) then
+                 call volume_block
+                 call metric_block
+                 call boundaryNormals
+
+                 if (equations == RANSEquations .and. useApproxWallDistance) then
+                    call updateWallDistancesQuickly(nn, 1, sps)
+                 end if
+              end if
+
+              ! Compute the pressures/viscositites
+              call computePressureSimple(.False.)
+
+              ! Compute Laminar/eddy viscosity if required
+              call computeLamViscosity(.False.)
+              call computeEddyViscosity(.False.)
+
+              ! Make sure to call the turb BC's first incase we need to
+              ! correct for K
+              if( equations == RANSEquations .and. turbRes) then
+                 call BCTurbTreatment
+                 call applyAllTurbBCthisblock(.True.)
+              end if
+              call applyAllBC_block(.True.)
+           end do
+        end do
+    end if
 
     ! Compute the ranges of the residuals we are dealing with:
     if (flowRes .and. turbRes) then
@@ -234,24 +241,26 @@ contains
        lEnd   = nt2
     end if
 
-    ! Exchange values
-    call whalo2(1_intType, lStart, lEnd, .True., .True., .True.)
+    if (updateVars) then
+        ! Exchange values
+        call whalo2(1_intType, lStart, lEnd, .True., .True., .True.)
 
-    ! Need to re-apply the BCs. The reason is that BC halos behind
-    ! interpolated cells need to be recomputed with their new
-    ! interpolated values from actual compute cells. Only needed for
-    ! overset.
-    if (oversetPresent) then
-       do sps=1,nTimeIntervalsSpectral
-          do nn=1,nDom
-             call setPointers(nn, currentLevel, sps)
-             if( equations == RANSEquations .and. turbRes) then
-                call BCTurbTreatment
-                call applyAllTurbBCthisblock(.True.)
-             end if
-             call applyAllBC_block(.True.)
-          end do
-       end do
+        ! Need to re-apply the BCs. The reason is that BC halos behind
+        ! interpolated cells need to be recomputed with their new
+        ! interpolated values from actual compute cells. Only needed for
+        ! overset.
+        if (oversetPresent) then
+           do sps=1,nTimeIntervalsSpectral
+              do nn=1,nDom
+                 call setPointers(nn, currentLevel, sps)
+                 if( equations == RANSEquations .and. turbRes) then
+                    call BCTurbTreatment
+                    call applyAllTurbBCthisblock(.True.)
+                 end if
+                 call applyAllBC_block(.True.)
+              end do
+           end do
+        end if
     end if
 
     ! Main loop for the residual...This is where the blockette magic happens.
@@ -561,6 +570,7 @@ contains
              end do
 
              ! Face velocities if necessary
+             ! BUG HERE
              if (addGridVelocities) then
                 do k=1, ke
                    do j=1, je

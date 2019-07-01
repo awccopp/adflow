@@ -661,6 +661,17 @@ python module libadflow
        end module oversetdata
 
 ! ================ bare subroutines =============
+        subroutine test(speed1, speed2, block_size)
+          real(kind=realtype), intent(out) :: speed1, speed2
+          integer(kind=inttype), intent(out) :: block_size
+          logical :: updatevars
+        end subroutine test
+
+        subroutine test_b(speed1, speed2, block_size)
+          real(kind=realtype), intent(out) :: speed1, speed2
+          integer(kind=inttype), intent(out) :: block_size
+          logical :: updatevars
+        end subroutine test_b
 
         subroutine writesol(famlist,nfamlist) ! in :test:writeSol.F90
             integer(kind=inttype) dimension(nfamlist),intent(in) :: famlist

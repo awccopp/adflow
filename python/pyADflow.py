@@ -4412,6 +4412,7 @@ class ADFLOW(AeroSolver):
             'cfllimit':[float, 1.5],
             'useblockettes':[bool, True],
             'uselinresmonitor':[bool, False],
+            'usetestwithbcs':[bool, True],
 
             # Overset Parameters:
             'nearwalldist':[float, 0.1],
@@ -4606,6 +4607,7 @@ class ADFLOW(AeroSolver):
                      'parallel':self.adflow.inputparallel,
                      'ts':self.adflow.inputtimespectral,
                      'overset':self.adflow.inputoverset,
+                     'test':self.adflow.test,
                  }
 
         # In the option map, we first list the "module" defined in
@@ -4719,6 +4721,7 @@ class ADFLOW(AeroSolver):
             'cfllimit':['iter', 'cfllimit'],
             'useblockettes':['discr', 'useblockettes'],
             'uselinresmonitor':['iter','uselinresmonitor'],
+            'usetestwithbcs':['test', 'updatevars'],
             # Overset Parameters
             'nearwalldist':['overset','nearwalldist'],
             'backgroundvolscale':['overset','backgroundvolscale'],

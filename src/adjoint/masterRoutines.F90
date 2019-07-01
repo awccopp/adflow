@@ -931,7 +931,7 @@ contains
     use flowVarRefState, only : nw, viscous
     use blockPointers, only : nDom, il, jl, kl, wd, dwd, iblank
     use inputPhysics, only : equationMode, turbModel, equations
-    use inputDiscretization, only : lowSpeedPreconditioner, spaceDiscr
+    use inputDiscretization, only : lowSpeedPreconditioner, spaceDiscr, useBlockettes
     use inputTimeSpectral, only : nTimeIntervalsSpectral
     use utils, only : setPointers_d
     use haloExchange, only : whalo2_b
@@ -954,6 +954,7 @@ contains
     use oversetData, only : oversetPresent
     use bcroutines, only : applyallbc_block
     use actuatorRegionData, only : nActuatorRegions
+    use blockette_state_b, only : blockette_fast_b
     implicit none
 
     ! Input variables:
@@ -993,48 +994,55 @@ contains
        domainLoop1: do nn=1, nDom
           call setPointers_d(nn, 1, sps)
 
-          ! Now we start running back through the main residual code:
-          call resScale_b
-          call sumDwAndFw_b
+          if (useBlockettes) then
+              ! call blockette code
+              call blockette_fast_b
+          else ! just run the original code
 
-          ! if (lowSpeedPreconditioner) then
-          !    call applyLowSpeedPreconditioner_b
-          ! end if
+              ! Now we start running back through the main residual code:
+              call resScale_b
+              call sumDwAndFw_b
 
-          ! Note that master_b does not include the approximation codes
-          ! as those are never needed in reverse.
-          if (viscous) then
-             call viscousFlux_fast_b
-             call allNodalGradients_fast_b
-             call computeSpeedOfSoundSquared_b
+              ! if (lowSpeedPreconditioner) then
+              !    call applyLowSpeedPreconditioner_b
+              ! end if
+
+              ! Note that master_b does not include the approximation codes
+              ! as those are never needed in reverse.
+              if (viscous) then
+                 call viscousFlux_fast_b
+                 call allNodalGradients_fast_b
+                 call computeSpeedOfSoundSquared_b
+              end if
+
+              select case (spaceDiscr)
+              case (dissScalar)
+                 call inviscidDissFluxScalar_fast_b
+              case (dissMatrix)
+                 call inviscidDissFluxMatrix_fast_b
+              case (upwind)
+                 call inviscidUpwindFlux_fast_b(.True.)
+              end select
+
+              call inviscidCentralFlux_fast_b
+
+              ! Compute turbulence residual for RANS equations
+              if( equations == RANSEquations) then
+                 select case (turbModel)
+                 case (spalartAllmaras)
+                    call saResScale_fast_b
+                    call saViscous_fast_b
+                    !call unsteadyTurbTerm_b(1_intType, 1_intType, itu1-1, qq)
+                    call turbAdvection_fast_b(1_intType, 1_intType, itu1-1, qq)
+                    call saSource_fast_b
+                 end select
+
+                 !call unsteadyTurbSpectral_block_b(itu1, itu1, nn, sps)
+              end if
+
+              call timeStep_block_fast_b(.false.)
           end if
 
-          select case (spaceDiscr)
-          case (dissScalar)
-             call inviscidDissFluxScalar_fast_b
-          case (dissMatrix)
-             call inviscidDissFluxMatrix_fast_b
-          case (upwind)
-             call inviscidUpwindFlux_fast_b(.True.)
-          end select
-
-          call inviscidCentralFlux_fast_b
-
-          ! Compute turbulence residual for RANS equations
-          if( equations == RANSEquations) then
-             select case (turbModel)
-             case (spalartAllmaras)
-                call saResScale_fast_b
-                call saViscous_fast_b
-                !call unsteadyTurbTerm_b(1_intType, 1_intType, itu1-1, qq)
-                call turbAdvection_fast_b(1_intType, 1_intType, itu1-1, qq)
-                call saSource_fast_b
-             end select
-
-             !call unsteadyTurbSpectral_block_b(itu1, itu1, nn, sps)
-          end if
-
-          call timeStep_block_fast_b(.false.)
           do iRegion=1, nActuatorRegions
              call sourceTerms_block_fast_b(nn, .True. , iRegion, dummyReal)
           end do
