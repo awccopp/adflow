@@ -135,6 +135,7 @@ contains
         use inputDiscretization, only : lowSpeedPreconditioner, spaceDiscr
         use inputTimeSpectral, only : nTimeIntervalsSpectral
         use sa_fast_b, only : qq
+        use communication, only : myid, adflow_comm_world
 
         ! NEED ALL OF THESE HERE
         ! use adjointextra_b, only : resscale_B, sumdwandfw_b
@@ -149,7 +150,11 @@ contains
         implicit none
 
         ! Working Variables
-        integer(kind=intType) :: i, j, k, l
+        integer(kind=intType) :: i, j, k, l, ierr
+
+        real(kind=realType) :: timeA, timeB, tCopy, tZero, tMetrics, tResScale, &
+        tSum, tVisc, tGrad, tSS, tDiss, tInviscid, tSAResScale, tSAVisc, tSAAdv, &
+        tSASource, tTimeStep, tWrite
 
         ! here is an exhaustive list of the variables that we are interested in
         ! use blockPointers, only : nDom, il, jl, kl, wd, dwd, iblank
@@ -184,6 +189,23 @@ contains
         ! &   sk, sfacei, sfacej, sfacek, dtl, gamma, vol, addgridvelocities, &
         ! &   sectionid
 
+        ! First, zero out all the timings
+        tCopy = zero
+        tZero = zero
+        tMetrics = zero
+        tResScale = zero
+        tSum = zero
+        tVisc = zero
+        tGrad = zero
+        tSS = zero
+        tDiss = zero
+        tInviscid = zero
+        tSAResScale = zero
+        tSAVisc = zero
+        tSAAdv = zero
+        tSASource = zero
+        tTimeStep = zero
+        tWrite = zero
 
 
         ! We first need to copy the relevant variables from the block to the blockettes
@@ -192,6 +214,9 @@ contains
         do kk=2, bkl, BS
             do jj=2, bjl, BS
                 do ii=2, bil, BS
+
+                    call mpi_barrier(adflow_comm_world, ierr)
+                    timeA = mpi_wtime()
 
                     ! Determine the actual size this block will be and set
                     ! the sizes in the blockette module for each of the
@@ -498,6 +523,11 @@ contains
                        end do
                    end do
 
+                   call mpi_barrier(adflow_comm_world, ierr)
+                   timeB = mpi_wtime()
+
+                   tcopy = tcopy + (timeB-timeA)
+
                     ! Also clear out the access-only variables as these are all derivative seeds
                     scratchd = zero
                     wd       = zero
@@ -523,11 +553,32 @@ contains
                     qyd = zero
                     qzd = zero
 
+                    call mpi_barrier(adflow_comm_world, ierr)
+                    timeA = mpi_wtime()
+
+                    tzero = tzero - (timeB-timeA)
+
                 call metrics
+
+                call mpi_barrier(adflow_comm_world, ierr)
+                timeB = mpi_wtime()
+
+                tmetrics = tmetrics + (timeB-timeA)
 
                 ! Now we start running back through the main residual code:
                 call resScale_b
+                call mpi_barrier(adflow_comm_world, ierr)
+                timeA = mpi_wtime()
+
+                tresscale = tresScale - (timeB-timeA)
+
                 call sumDwAndFw_b
+
+                call mpi_barrier(adflow_comm_world, ierr)
+                timeB = mpi_wtime()
+
+                tsum = tsum + (timeB-timeA)
+
 
                 ! if (lowSpeedPreconditioner) then
                 !    call applyLowSpeedPreconditioner_b
@@ -537,13 +588,31 @@ contains
                 ! as those are never needed in reverse.
                 if (viscous) then
                     call viscousFlux_fast_b
+                    call mpi_barrier(adflow_comm_world, ierr)
+                    timeA = mpi_wtime()
+
+                    tvisc = tvisc - (timeB-timeA)
+
                     call allNodalGradients_fast_b
+                    call mpi_barrier(adflow_comm_world, ierr)
+                    timeB = mpi_wtime()
+
+                    tgrad = tgrad + (timeB-timeA)
+
+
                     call computeSpeedOfSoundSquared_b
+                    call mpi_barrier(adflow_comm_world, ierr)
+                    timeA = mpi_wtime()
+
+                    tss = tSS - (timeB-timeA)
                 end if
 
                 select case (spaceDiscr)
                 case (dissScalar)
                     call inviscidDissFluxScalar_fast_b
+                    call mpi_barrier(adflow_comm_world, ierr)
+                    timeB = mpi_wtime()
+                    tdiss = tdiss + (timeB-timeA)
                 case (dissMatrix)
                     call inviscidDissFluxMatrix_fast_b
                 case (upwind)
@@ -551,22 +620,49 @@ contains
                 end select
 
                 call inviscidCentralFlux_fast_b
+                call mpi_barrier(adflow_comm_world, ierr)
+                timeA = mpi_wtime()
+
+                tInviscid = tinviscid - (timeB-timeA)
 
                 ! Compute turbulence residual for RANS equations
                 if( equations == RANSEquations) then
                     select case (turbModel)
                     case (spalartAllmaras)
                         call saResScale_fast_b
+                        call mpi_barrier(adflow_comm_world, ierr)
+                        timeB = mpi_wtime()
+
+                        tSAResScale = tSAResScale + (timeB-timeA)
+
                         call saViscous_fast_b
+                        call mpi_barrier(adflow_comm_world, ierr)
+                        timeA = mpi_wtime()
+
+                        tsavisc = tsavisc - (timeB-timeA)
+
                         !call unsteadyTurbTerm_b(1_intType, 1_intType, itu1-1, qq)
                         call turbAdvection_fast_b(1_intType, 1_intType, itu1-1, qq)
+                        call mpi_barrier(adflow_comm_world, ierr)
+                        timeB = mpi_wtime()
+
+                        tsaadv = tSAAdv + (timeB-timeA)
+
                         call saSource_fast_b
+                        call mpi_barrier(adflow_comm_world, ierr)
+                        timeA = mpi_wtime()
+
+                        tSASource = tSASource - (timeB-timeA)
                     end select
 
                     !call unsteadyTurbSpectral_block_b(itu1, itu1, nn, sps)
                 end if
 
                 call timeStep_block_fast_b(.false.)
+                call mpi_barrier(adflow_comm_world, ierr)
+                timeB = mpi_wtime()
+
+                tTimeStep = tTimeStep + (timeB-timeA)
 
                 ! we now need to copy the blockette variables to the blocks and we are done
                 ! Note: we need to write out all the AD seeds that we have modified, turns out this list is pretty extensive, so be careful here. Furthermore, we need to accumulate AD seeds for overlapping variables (i.e. single and double halos)
@@ -611,6 +707,11 @@ contains
                    end do
                end do
 
+               call mpi_barrier(adflow_comm_world, ierr)
+               timeA = mpi_wtime()
+
+               twrite = twrite - (timeB-timeA)
+
 
 
                ! ! Also copy out the dtl if we were asked for it
@@ -628,6 +729,32 @@ contains
        end do
    end do
    !$OMP END PARALLEL DO
+
+   if (myID .eq. zero) then
+       ! Print all timings
+
+       print *,"Begin timings:"
+
+        print *,tCopy, " copy variables to blockette"
+       print *,tZero, " zero ad seeds"
+       print *,tMetrics, " metrics"
+       print *,tResScale, " res scale"
+       print *,tSum, " sum fw and dw"
+        print *,tVisc, " viscous fluxes"
+       print *,tGrad, " nodal gradients"
+       print *,tSS, " speed of sound"
+        print *,tDiss, " JST dissipation (scalar)"
+       print *,tInviscid, " central inviscid fluxes"
+       print *,tSAResScale, " SA res scale"
+       print *,tSAVisc, " SA viscous"
+       print *,tSAAdv, " SA advection"
+       print *,tSASource, " SA source"
+        print *,tTimeStep, " time step"
+       print *,tWrite, " write out ad seeds"
+
+
+   end if
+
 
 
     end subroutine blockette_fast_b
