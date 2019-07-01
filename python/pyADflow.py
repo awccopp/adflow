@@ -2891,7 +2891,7 @@ class ADFLOW(AeroSolver):
         # using mapVector.
         npts, ncell = self._getSurfaceSize(self.allWallsGroup)
         fullCpTarget = numpy.atleast_2d(self.adflow.getcptargets(npts, TS+1))
-        
+
         # Now map new values in and set.
         fullCpTarget = self.mapVector(numpy.atleast_2d(CpTargets).T, groupName, self.allWallsGroup, fullCpTarget.T)
         fullCpTarget = fullCpTarget.T
@@ -3294,13 +3294,25 @@ class ADFLOW(AeroSolver):
             Filename to use. The Adjoint matrix, PC matrix(if it exists)
             and RHS  will be written
         """
-        adjointMatrixName = baseFileNmae + '_drdw.bin'
-        pcMatrixName = baseFileNmae + '_drdwPre.bin'
-        rhsName = baseFileName + '_rsh.bin'
+        adjointMatrixName = baseFileName + '_drdw.bin'
+        pcMatrixName = baseFileName + '_drdwPre.bin'
         cellCenterName = baseFileName + '_cellCen.bin'
         self.adflow.adjointapi.saveadjointmatrix(adjointMatrixName)
         self.adflow.adjointapi.saveadjointpc(pcMatrixName)
-        self.adflow.saveadjointrhs(rhsName)
+
+    def saveAdjointRHS(self, baseFileName, objective):
+        # Check to see if the RHS Partials have been computed
+        if objective not in self.curAP.adflowData.adjointRHS:
+            RHS = self.computeJacobianVectorProductBwd(
+                funcsBar=self._getFuncsBar(objective), wDeriv=True)
+            self.curAP.adflowData.adjointRHS[objective] = RHS.copy()
+        else:
+            RHS = self.curAP.adflowData.adjointRHS[objective].copy()
+
+        rhsName = baseFileName + '_rhs_%s.bin'%objective
+        self.adflow.adjointapi.saveadjointrhs(RHS, rhsName)
+
+
 
     def computeStabilityParameters(self):
         """
@@ -4396,6 +4408,7 @@ class ADFLOW(AeroSolver):
             'lowspeedpreconditioner':[bool, False],
             'walldistcutoff':[float, 1e20],
             'infchangecorrection':[bool, False],
+            'cavitationnumber':[float, 1.4],
 
             # Common Paramters
             'ncycles':[int, 500],
@@ -4479,6 +4492,10 @@ class ADFLOW(AeroSolver):
             'rkreset':[bool, False],
             'nrkreset':[int, 5],
 
+            # MG PC
+            'agmglevels':[int, 1],
+            'agmgnsmooth':[int, 3],
+
             # Approximate Newton-Krylov Parameters
             'useanksolver':[bool, False],
             'ankuseturbdadi':[bool, True],
@@ -4491,6 +4508,7 @@ class ADFLOW(AeroSolver):
             'ankpcilufill':[int, 2],
             'ankjacobianlag':[int, 10],
             'ankinnerpreconits':[int, 1],
+            'ankouterpreconits':[int, 1],
             'ankcfl0':[float, 5.0],
             'ankcflmin':[float,1.0],
             'ankcfllimit':[float, 1e5],
@@ -4600,6 +4618,7 @@ class ADFLOW(AeroSolver):
                      'stab': self.adflow.inputtsstabderiv,
                      'nk': self.adflow.nksolver,
                      'ank': self.adflow.anksolver,
+                     'agmg':self.adflow.agmg,
                      'adjoint': self.adflow.inputadjoint,
                      'cost': self.adflow.inputcostfunctions,
                      'unsteady':self.adflow.inputunsteady,
@@ -4702,6 +4721,7 @@ class ADFLOW(AeroSolver):
             'restrictionrelaxation':['iter', 'fcoll'],
             'forcesastractions':['physics', 'forcesastractions'],
             'lowspeedpreconditioner':['discr', 'lowspeedpreconditioner'],
+            'cavitationnumber':['physics','cavitationnumber'],
 
             # Common Paramters
             'ncycles':['iter', 'ncycles'],
@@ -4794,6 +4814,10 @@ class ADFLOW(AeroSolver):
             'rkreset':['iter', 'rkreset'],
             'nrkreset':['iter', 'miniternum'],
 
+            # MG PC
+            'agmglevels':['agmg', 'agmglevels'],
+            'agmgnsmooth':['agmg', 'agmgnsmooth'],
+
             # Approximate Newton-Krylov Paramters
             'useanksolver':['ank', 'useanksolver'],
             'ankuseturbdadi':['ank', 'ank_useturbdadi'],
@@ -4806,6 +4830,7 @@ class ADFLOW(AeroSolver):
             'ankpcilufill':['ank', 'ank_ilufill'],
             'ankjacobianlag':['ank', 'ank_jacobianlag'],
             'ankinnerpreconits':['ank', 'ank_innerpreconits'],
+            'ankouterpreconits':['ank', 'ank_outerpreconits'],
             'ankcfl0':['ank', 'ank_cfl0'],
             'ankcflmin':['ank', 'ank_cflmin0'],
             'ankcfllimit':['ank','ank_cfllimit'],
@@ -5026,6 +5051,8 @@ class ADFLOW(AeroSolver):
             'cavitation':self.adflow.constants.costfunccavitation,
             'mdot':self.adflow.constants.costfuncmdot,
             'mavgptot':self.adflow.constants.costfuncmavgptot,
+            'aavgptot':self.adflow.constants.costfuncaavgptot,
+            'aavgps':self.adflow.constants.costfuncaavgps,
             'mavgttot':self.adflow.constants.costfuncmavgttot,
             'mavgps':self.adflow.constants.costfuncmavgps,
             'mavgmn':self.adflow.constants.costfuncmavgmn,

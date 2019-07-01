@@ -29,6 +29,7 @@ python module libadflow
          subroutine unsteadyheader
          end subroutine unsteadyheader
 
+
          subroutine pointreduce(pts,n,tol,uniquepts,link,nunique) ! in :test:utils.F90:utils
            real(kind=realtype) dimension(3,n),intent(in) :: pts
            integer(kind=inttype), optional,intent(in),check(shape(pts,1)==n),depend(pts) :: n=shape(pts,1)
@@ -99,6 +100,19 @@ python module libadflow
          end subroutine setbcdata
 
        end module bcdata
+
+
+       module agmg
+         integer(kind=inttype) :: agmglevels
+         integer(kind=inttype) :: agmgnsmooth
+
+         subroutine setupagmg
+         end subroutine setupagmg
+
+         subroutine destroyagmg
+         end subroutine destroyagmg
+
+       end module agmg
 
        module flowutils
 
@@ -220,6 +234,7 @@ python module libadflow
        module anksolver
          use constants
          integer(kind=inttype) :: ank_innerpreconits
+         integer(kind=inttype) :: ank_outerpreconits
          integer(kind=inttype) :: ank_jacobianlag
          logical :: useanksolver
          logical :: ank_useturbdadi
@@ -581,6 +596,13 @@ python module libadflow
            character*(*) intent(in) :: filename
          end subroutine saveadjointpc
 
+         subroutine saveadjointrhs(rhs,filename,nstate) ! in :test:solveADjointTransposePETSc.F90
+           real(kind=realtype) dimension(nstate) :: rhs
+           character*(*) intent(in) :: filename
+           integer(kind=inttype), optional,check(len(rhs)>=nstate),depend(rhs) :: nstate=len(rhs)
+         end subroutine solveadjoint
+
+
          subroutine savecellcenters(filename)
            character*(*) intent(in) :: filename
          end subroutine savecellcenters
@@ -894,6 +916,8 @@ python module libadflow
          integer(kind=inttype) parameter,optional :: costfuncmavgvy=84
          integer(kind=inttype) parameter,optional :: costfuncmavgvz=85
          integer(kind=inttype) parameter,optional :: costfunccperror2=86
+         integer(kind=inttype) parameter,optional :: costfuncaavgptot=87
+         integer(kind=inttype) parameter,optional :: costfuncaavgps=88
         end module constants
 
        module communication ! in :adflow:../../modules/communication.f90
@@ -1104,6 +1128,7 @@ python module libadflow
          real(kind=realtype) :: alpha
          real(kind=realtype) :: beta
          integer(kind=inttype) :: liftindex
+         real(kind=realtype) :: cavitationnumber
        end module inputphysics
 
        module inputadjoint ! in :adflow:../modules/inputParam.f90
