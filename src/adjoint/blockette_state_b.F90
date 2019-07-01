@@ -1023,13 +1023,13 @@ subroutine viscousflux_fast_b()
         vyd = 0.0_8
         vzd = 0.0_8
         mued = 0.0_8
-        ! do k=2, kl
-        !    do j=2, jl
-        !       do i=1, il
-        do ii=0,il*ny*nz-1
-            i = mod(ii, il) + 1
-            j = mod(ii/il, ny) + 2
-            k = ii/(il*ny) + 2
+        do k=2, kl
+           do j=2, jl
+              do i=1, il
+        ! do ii=0,il*ny*nz-1
+        !     i = mod(ii, il) + 1
+        !     j = mod(ii/il, ny) + 2
+        !     k = ii/(il*ny) + 2
             ! set the value of the porosity. if not zero, it is set
             ! to average the eddy-viscosity and to take the factor
             ! rfilv into account.
@@ -1430,19 +1430,19 @@ subroutine viscousflux_fast_b()
         end if
         rlvd(i, j, k) = rlvd(i, j, k) + por*muld
         rlvd(i+1, j, k) = rlvd(i+1, j, k) + por*muld
-        !     end do
-        ! end do
+            end do
+        end do
     end do
     mued = 0.0_8
     mue = zero
     mued = 0.0_8
-    ! do k=2,kl
-    !    do j=1,jl
-    !       do i=2,il
-    do ii=0,nx*jl*nz-1
-        i = mod(ii, nx) + 2
-        j = mod(ii/nx, jl) + 1
-        k = ii/(nx*jl) + 2
+    do k=2,kl
+       do j=1,jl
+          do i=2,il
+    ! do ii=0,nx*jl*nz-1
+    !     i = mod(ii, nx) + 2
+    !     j = mod(ii/nx, jl) + 1
+    !     k = ii/(nx*jl) + 2
         ! set the value of the porosity. if not zero, it is set
         ! to average the eddy-viscosity and to take the factor
         ! rfilv into account.
@@ -1843,23 +1843,23 @@ subroutine viscousflux_fast_b()
     end if
     rlvd(i, j, k) = rlvd(i, j, k) + por*muld
     rlvd(i, j+1, k) = rlvd(i, j+1, k) + por*muld
+! end do
 end do
-! end do
-! end do
-! end do
+end do
+end do
 mued = 0.0_8
 !
 !         viscous fluxes in the k-direction.
 !
 mue = zero
 mued = 0.0_8
-! do k=1,kl
-!    do j=2,jl
-!       do i=2,il
-do ii=0,nx*ny*kl-1
-    i = mod(ii, nx) + 2
-    j = mod(ii/nx, ny) + 2
-    k = ii/(nx*ny) + 1
+do k=1,kl
+   do j=2,jl
+      do i=2,il
+! do ii=0,nx*ny*kl-1
+!     i = mod(ii, nx) + 2
+!     j = mod(ii/nx, ny) + 2
+!     k = ii/(nx*ny) + 1
     ! set the value of the porosity. if not zero, it is set
     ! to average the eddy-viscosity and to take the factor
     ! rfilv into account.
@@ -2260,10 +2260,10 @@ if (branch .eq. 0) then
 end if
 rlvd(i, j, k) = rlvd(i, j, k) + por*muld
 rlvd(i, j, k+1) = rlvd(i, j, k+1) + por*muld
+! end do
 end do
-! end do
-! end do
-! end do
+end do
+end do
 end if
 end subroutine viscousflux_fast_b
 
@@ -2312,10 +2312,13 @@ subroutine allnodalgradients_fast_b()
     real(kind=realtype) :: tempd2
     real(kind=realtype) :: tempd1
     real(kind=realtype) :: tempd0
-    do ii=0,il*jl*kl-1
-        i = mod(ii, il) + 1
-        j = mod(ii/il, jl) + 1
-        k = ii/(il*jl) + 1
+    do k=1,kl
+       do j=1,jl
+          do i=1,il
+    ! do ii=0,il*jl*kl-1
+    !     i = mod(ii, il) + 1
+    !     j = mod(ii/il, jl) + 1
+    !     k = ii/(il*jl) + 1
         ! compute the inverse of 8 times the volume for this node.
         oneoverv = one/(vol(i, j, k)+vol(i, j, k+1)+vol(i+1, j, k)+vol(i+1&
         &       , j, k+1)+vol(i, j+1, k)+vol(i, j+1, k+1)+vol(i+1, j+1, k)+vol(i&
@@ -2335,10 +2338,15 @@ subroutine allnodalgradients_fast_b()
         uyd(i, j, k) = oneoverv*uyd(i, j, k)
         uxd(i, j, k) = oneoverv*uxd(i, j, k)
     end do
-    do ii=0,ie*jl*kl-1
-        i = mod(ii, ie) + 1
-        j = mod(ii/ie, jl) + 1
-        k = ii/(ie*jl) + 1
+    end do
+    end do
+    ! do ii=0,ie*jl*kl-1
+    !     i = mod(ii, ie) + 1
+    !     j = mod(ii/ie, jl) + 1
+    !     k = ii/(ie*jl) + 1
+    do k=1, kl
+       do j=1, jl
+          do i=1, ie
         ! compute 8 times the average normal for this part of
         ! the control volume. the factor 8 is taken care of later
         ! on when the division by the volume takes place.
@@ -2409,10 +2417,15 @@ subroutine allnodalgradients_fast_b()
         wd(i, j, k+1, ivx) = wd(i, j, k+1, ivx) + tempd10
         wd(i, j+1, k+1, ivx) = wd(i, j+1, k+1, ivx) + tempd10
     end do
-    do ii=0,il*je*kl-1
-        i = mod(ii, il) + 1
-        j = mod(ii/il, je) + 1
-        k = ii/(il*je) + 1
+end do
+end do
+    ! do ii=0,il*je*kl-1
+    !     i = mod(ii, il) + 1
+    !     j = mod(ii/il, je) + 1
+    !     k = ii/(il*je) + 1
+    do k=1, kl
+       do j=1, je
+          do i=1, il
         ! compute 8 times the average normal for this part of
         ! the control volume. the factor 8 is taken care of later
         ! on when the division by the volume takes place.
@@ -2483,10 +2496,15 @@ subroutine allnodalgradients_fast_b()
         wd(i, j, k+1, ivx) = wd(i, j, k+1, ivx) + tempd6
         wd(i+1, j, k+1, ivx) = wd(i+1, j, k+1, ivx) + tempd6
     end do
-    do ii=0,il*jl*ke-1
-        i = mod(ii, il) + 1
-        j = mod(ii/il, jl) + 1
-        k = ii/(il*jl) + 1
+end do
+end do
+    ! do ii=0,il*jl*ke-1
+    !     i = mod(ii, il) + 1
+    !     j = mod(ii/il, jl) + 1
+    !     k = ii/(il*jl) + 1
+    do k=1, ke
+       do j=1, jl
+          do i=1, il
         ! compute 8 times the average normal for this part of
         ! the control volume. the factor 8 is taken care of later
         ! on when the division by the volume takes place.
@@ -2557,6 +2575,8 @@ subroutine allnodalgradients_fast_b()
         wd(i, j+1, k, ivx) = wd(i, j+1, k, ivx) + tempd2
         wd(i+1, j+1, k, ivx) = wd(i+1, j+1, k, ivx) + tempd2
     end do
+end do
+end do
     wxd = 0.0_8
     wyd = 0.0_8
     wzd = 0.0_8
@@ -2600,10 +2620,13 @@ subroutine computespeedofsoundsquared_b()
     ! determine if we need to correct for k
     correctfork = getcorrectfork()
     if (correctfork) then
-        do ii=0,ie*je*ke-1
-            i = mod(ii, ie) + 1
-            j = mod(ii/ie, je) + 1
-            k = ii/(ie*je) + 1
+        do k=1,ke
+           do j=1,je
+              do i=1,ie
+        ! do ii=0,ie*je*ke-1
+        !     i = mod(ii, ie) + 1
+        !     j = mod(ii/ie, je) + 1
+        !     k = ii/(ie*je) + 1
             pp = p(i, j, k) - twothird*w(i, j, k, irho)*w(i, j, k, itu1)
             temp = w(i, j, k, irho)
             tempd = gamma(i, j, k)*aad(i, j, k)/temp
@@ -2616,16 +2639,23 @@ subroutine computespeedofsoundsquared_b()
             wd(i, j, k, itu1) = wd(i, j, k, itu1) - twothird*w(i, j, k, irho&
             &         )*ppd
         end do
+        end do
+        end do
     else
-        do ii=0,ie*je*ke-1
-            i = mod(ii, ie) + 1
-            j = mod(ii/ie, je) + 1
-            k = ii/(ie*je) + 1
+        do k=1,ke
+           do j=1,je
+              do i=1,ie
+        ! do ii=0,ie*je*ke-1
+        !     i = mod(ii, ie) + 1
+        !     j = mod(ii/ie, je) + 1
+        !     k = ii/(ie*je) + 1
             temp0 = w(i, j, k, irho)
             tempd0 = gamma(i, j, k)*aad(i, j, k)/temp0
             pd(i, j, k) = pd(i, j, k) + tempd0
             wd(i, j, k, irho) = wd(i, j, k, irho) - p(i, j, k)*tempd0/temp0
             aad(i, j, k) = 0.0_8
+        end do
+        end do
         end do
     end if
 end subroutine computespeedofsoundsquared_b
@@ -2796,21 +2826,29 @@ subroutine invisciddissfluxscalar_fast_b()
             ! set to a fraction of the free stream value.
             sslim = 0.001_realtype*pinfcorr/rhoinf**gammainf
             ! store the entropy in ss. see above.
-            do ii=0,(ib+1)*(jb+1)*(kb+1)-1
-                i = mod(ii, ib + 1)
-                j = mod(ii/(ib+1), jb + 1)
-                k = ii/((ib+1)*(jb+1))
+            do k=0,kb
+               do j=0,jb
+                  do i=0,ib
+            ! do ii=0,(ib+1)*(jb+1)*(kb+1)-1
+            !     i = mod(ii, ib + 1)
+            !     j = mod(ii/(ib+1), jb + 1)
+            !     k = ii/((ib+1)*(jb+1))
                 ss(i, j, k) = p(i, j, k)/w(i, j, k, irho)**gamma(i, j, k)
+            end do
+            end do
             end do
             call pushcontrol2b(0)
         case default
             call pushcontrol2b(2)
         end select
         ! compute the pressure sensor for each cell, in each direction:
-        do ii=0,ie*je*ke-1
-            i = mod(ii, ie) + 1
-            j = mod(ii/ie, je) + 1
-            k = ii/(ie*je) + 1
+        do k=1,ke
+           do j=1,je
+              do i=1,ie
+        ! do ii=0,ie*je*ke-1
+        !     i = mod(ii, ie) + 1
+        !     j = mod(ii/ie, je) + 1
+        !     k = ii/(ie*je) + 1
             x1 = (ss(i+1, j, k)-two*ss(i, j, k)+ss(i-1, j, k))/(ss(i+1, j, k&
             &         )+two*ss(i, j, k)+ss(i-1, j, k)+sslim)
             if (x1 .ge. 0.) then
@@ -2833,6 +2871,8 @@ subroutine invisciddissfluxscalar_fast_b()
                 dss(i, j, k, 3) = -x3
             end if
         end do
+        end do
+        end do
         ! set a couple of constants for the scheme.
         fis2 = rfil*vis2
         fis4 = rfil*vis4
@@ -2842,10 +2882,13 @@ subroutine invisciddissfluxscalar_fast_b()
         ! only, because the halo values do not matter.
         radkd = 0.0_8
         dssd = 0.0_8
-        do ii=0,nx*ny*kl-1
-            i = mod(ii, nx) + 2
-            j = mod(ii/nx, ny) + 2
-            k = ii/(nx*ny) + 1
+        do k=1,kl
+           do j=2,jl
+              do i=2,il
+        ! do ii=0,nx*ny*kl-1
+        !     i = mod(ii, nx) + 2
+        !     j = mod(ii/nx, ny) + 2
+        !     k = ii/(nx*ny) + 1
             ! compute the dissipation coefficients for this face.
             ppor = zero
             if (pork(i, j, k) .eq. normalflux) ppor = half
@@ -2988,11 +3031,16 @@ subroutine invisciddissfluxscalar_fast_b()
             radkd(i, j, k) = radkd(i, j, k) + ppor*rradd
             radkd(i, j, k+1) = radkd(i, j, k+1) + ppor*rradd
         end do
+        end do
+        end do
         radjd = 0.0_8
-        do ii=0,nx*jl*nz-1
-            i = mod(ii, nx) + 2
-            j = mod(ii/nx, jl) + 1
-            k = ii/(nx*jl) + 2
+        do k=2,kl
+           do j=1,jl
+              do i=2,il
+        ! do ii=0,nx*jl*nz-1
+        !     i = mod(ii, nx) + 2
+        !     j = mod(ii/nx, jl) + 1
+        !     k = ii/(nx*jl) + 2
             ! compute the dissipation coefficients for this face.
             ppor = zero
             if (porj(i, j, k) .eq. normalflux) ppor = half
@@ -3135,11 +3183,16 @@ subroutine invisciddissfluxscalar_fast_b()
             radjd(i, j, k) = radjd(i, j, k) + ppor*rradd
             radjd(i, j+1, k) = radjd(i, j+1, k) + ppor*rradd
         end do
+        end do
+        end do
         radid = 0.0_8
-        do ii=0,il*ny*nz-1
-            i = mod(ii, il) + 1
-            j = mod(ii/il, ny) + 2
-            k = ii/(il*ny) + 2
+        do k=2,kl
+           do j=2,jl
+              do i=1,il
+        ! do ii=0,il*ny*nz-1
+        !     i = mod(ii, il) + 1
+        !     j = mod(ii/il, ny) + 2
+        !     k = ii/(il*ny) + 2
             ! compute the dissipation coefficients for this face.
             ppor = zero
             if (pori(i, j, k) .eq. normalflux) ppor = half
@@ -3282,12 +3335,17 @@ subroutine invisciddissfluxscalar_fast_b()
             radid(i, j, k) = radid(i, j, k) + ppor*rradd
             radid(i+1, j, k) = radid(i+1, j, k) + ppor*rradd
         end do
+        end do
+        end do
         fwd = sfil*fwd
         ssd = 0.0_8
-        do ii=0,ie*je*ke-1
-            i = mod(ii, ie) + 1
-            j = mod(ii/ie, je) + 1
-            k = ii/(ie*je) + 1
+        do k=1,ke
+           do j=1,je
+              do i=1,ie
+        ! do ii=0,ie*je*ke-1
+        !     i = mod(ii, ie) + 1
+        !     j = mod(ii/ie, je) + 1
+        !     k = ii/(ie*je) + 1
             x1 = (ss(i+1, j, k)-two*ss(i, j, k)+ss(i-1, j, k))/(ss(i+1, j, k&
             &         )+two*ss(i, j, k)+ss(i-1, j, k)+sslim)
             if (x1 .ge. 0.) then
@@ -3355,12 +3413,17 @@ subroutine invisciddissfluxscalar_fast_b()
             ssd(i, j, k) = ssd(i, j, k) + two*tempd0 - two*tempd
             ssd(i-1, j, k) = ssd(i-1, j, k) + tempd0 + tempd
         end do
+        end do
+        end do
         call popcontrol2b(branch)
         if (branch .eq. 0) then
-            do ii=0,(ib+1)*(jb+1)*(kb+1)-1
-                i = mod(ii, ib + 1)
-                j = mod(ii/(ib+1), jb + 1)
-                k = ii/((ib+1)*(jb+1))
+            do k=0,kb
+               do j=0,jb
+                  do i=0,ib
+            ! do ii=0,(ib+1)*(jb+1)*(kb+1)-1
+            !     i = mod(ii, ib + 1)
+            !     j = mod(ii/(ib+1), jb + 1)
+            !     k = ii/((ib+1)*(jb+1))
                 temp1 = gamma(i, j, k)
                 temp0 = w(i, j, k, irho)
                 temp = temp0**temp1
@@ -3369,6 +3432,8 @@ subroutine invisciddissfluxscalar_fast_b()
                 &             .ne. int(temp1)))) wd(i, j, k, irho) = wd(i, j, k, irho) -&
                 &             p(i, j, k)*temp1*temp0**(temp1-1)*ssd(i, j, k)/temp**2
                 ssd(i, j, k) = 0.0_8
+            end do
+            end do
             end do
         else if (branch .eq. 1) then
             pd = pd + ssd
@@ -8209,10 +8274,13 @@ subroutine inviscidcentralflux_fast_b()
         end do
     end if
     sface = zero
-    do ii=0,nx*ny*kl-1
-        i = mod(ii, nx) + 2
-        j = mod(ii/nx, ny) + 2
-        k = ii/(nx*ny) + 1
+    do k=1,kl
+       do j=2,jl
+          do i=2,il
+    ! do ii=0,nx*ny*kl-1
+    !     i = mod(ii, nx) + 2
+    !     j = mod(ii/nx, ny) + 2
+    !     k = ii/(nx*ny) + 1
         ! set the dot product of the grid velocity and the
         ! normal in k-direction for a moving face.
         if (addgridvelocities) sface = sfacek(i, j, k)
@@ -8307,11 +8375,16 @@ subroutine inviscidcentralflux_fast_b()
         wd(i, j, k+1, ivy) = wd(i, j, k+1, ivy) + sk(i, j, k, 2)*vnpd
         wd(i, j, k+1, ivz) = wd(i, j, k+1, ivz) + sk(i, j, k, 3)*vnpd
     end do
+    end do
+    end do
     sface = zero
-    do ii=0,nx*jl*nz-1
-        i = mod(ii, nx) + 2
-        j = mod(ii/nx, jl) + 1
-        k = ii/(nx*jl) + 2
+    do k=2,kl
+       do j=1,jl
+          do i=2,il
+    ! do ii=0,nx*jl*nz-1
+    !     i = mod(ii, nx) + 2
+    !     j = mod(ii/nx, jl) + 1
+    !     k = ii/(nx*jl) + 2
         ! set the dot product of the grid velocity and the
         ! normal in j-direction for a moving face.
         if (addgridvelocities) sface = sfacej(i, j, k)
@@ -8406,13 +8479,18 @@ subroutine inviscidcentralflux_fast_b()
         wd(i, j+1, k, ivy) = wd(i, j+1, k, ivy) + sj(i, j, k, 2)*vnpd
         wd(i, j+1, k, ivz) = wd(i, j+1, k, ivz) + sj(i, j, k, 3)*vnpd
     end do
+    end do
+    end do
     ! initialize sface to zero. this value will be used if the
     ! block is not moving.
     sface = zero
-    do ii=0,il*ny*nz-1
-        i = mod(ii, il) + 1
-        j = mod(ii/il, ny) + 2
-        k = ii/(il*ny) + 2
+    do k=2, kl
+       do j=2, jl
+          do i=1, il
+    ! do ii=0,il*ny*nz-1
+    !     i = mod(ii, il) + 1
+    !     j = mod(ii/il, ny) + 2
+    !     k = ii/(il*ny) + 2
         ! set the dot product of the grid velocity and the
         ! normal in i-direction for a moving face.
         if (addgridvelocities) sface = sfacei(i, j, k)
@@ -8507,6 +8585,8 @@ subroutine inviscidcentralflux_fast_b()
         wd(i+1, j, k, ivy) = wd(i+1, j, k, ivy) + si(i, j, k, 2)*vnpd
         wd(i+1, j, k, ivz) = wd(i+1, j, k, ivz) + si(i, j, k, 3)*vnpd
     end do
+    end do
+    end do
 end subroutine inviscidcentralflux_fast_b
 
 !  differentiation of saresscale in reverse (adjoint) mode (with options i4 dr8 r8 noisize):
@@ -8532,10 +8612,13 @@ subroutine saresscale_fast_b()
     intrinsic max
     real(kind=realtype) :: x1
     scratchd = 0.0_8
-    do ii=0,nx*ny*nz-1
-        i = mod(ii, nx) + 2
-        j = mod(ii/nx, ny) + 2
-        k = ii/(nx*ny) + 2
+    do k=2, kl
+       do j=2, jl
+          do i=2, il
+    ! do ii=0,nx*ny*nz-1
+    !     i = mod(ii, nx) + 2
+    !     j = mod(ii/nx, ny) + 2
+    !     k = ii/(nx*ny) + 2
         x1 = real(iblank(i, j, k), realtype)
         if (x1 .lt. zero) then
             rblank = zero
@@ -8545,6 +8628,8 @@ subroutine saresscale_fast_b()
         scratchd(i, j, k, idvt) = scratchd(i, j, k, idvt) - volref(i, j, k&
         &       )*rblank*dwd(i, j, k, itu1)
         dwd(i, j, k, itu1) = 0.0_8
+    end do
+    end do
     end do
 end subroutine saresscale_fast_b
 
@@ -8600,10 +8685,13 @@ subroutine saviscous_fast_b()
     real(kind=realtype) :: temp4
     ! set model constants
     cb3inv = one/rsacb3
-    do ii=0,nx*ny*nz-1
-        i = mod(ii, nx) + 2
-        j = mod(ii/nx, ny) + 2
-        k = ii/(nx*ny) + 2
+    do k=2, kl
+       do j=2, jl
+          do i=2, il
+    ! do ii=0,nx*ny*nz-1
+    !     i = mod(ii, nx) + 2
+    !     j = mod(ii/nx, ny) + 2
+    !     k = ii/(nx*ny) + 2
         ! compute the metrics in xi-direction, i.e. along the
         ! line i = constant.
         voli = one/vol(i, j, k)
@@ -8719,10 +8807,15 @@ subroutine saviscous_fast_b()
         cnudd = ttm*camd + ttp*capd
         wd(i, j, k, itu1) = wd(i, j, k, itu1) - rsacb2*cb3inv*cnudd
     end do
-    do ii=0,nx*ny*nz-1
-        i = mod(ii, nx) + 2
-        j = mod(ii/nx, ny) + 2
-        k = ii/(nx*ny) + 2
+    end do
+    end do
+    do k=2, kl
+       do j=2, jl
+          do i=2, il
+    ! do ii=0,nx*ny*nz-1
+    !     i = mod(ii, nx) + 2
+    !     j = mod(ii/nx, ny) + 2
+    !     k = ii/(nx*ny) + 2
         ! compute the metrics in eta-direction, i.e. along the
         ! line j = constant.
         voli = one/vol(i, j, k)
@@ -8838,10 +8931,15 @@ subroutine saviscous_fast_b()
         cnudd = ttm*camd + ttp*capd
         wd(i, j, k, itu1) = wd(i, j, k, itu1) - rsacb2*cb3inv*cnudd
     end do
-    do ii=0,nx*ny*nz-1
-        i = mod(ii, nx) + 2
-        j = mod(ii/nx, ny) + 2
-        k = ii/(nx*ny) + 2
+    end do
+    end do
+    do k=2, kl
+       do j=2, jl
+          do i=2, il
+    ! do ii=0,nx*ny*nz-1
+    !     i = mod(ii, nx) + 2
+    !     j = mod(ii/nx, ny) + 2
+    !     k = ii/(nx*ny) + 2
         ! compute the metrics in zeta-direction, i.e. along the
         ! line k = constant.
         voli = one/vol(i, j, k)
@@ -8960,6 +9058,8 @@ subroutine saviscous_fast_b()
         cnudd = ttm*camd + ttp*capd
         wd(i, j, k, itu1) = wd(i, j, k, itu1) - rsacb2*cb3inv*cnudd
     end do
+    end do
+    end do
 end subroutine saviscous_fast_b
 
 !  differentiation of turbadvection in reverse (adjoint) mode (with options i4 dr8 r8 noisize):
@@ -9037,10 +9137,13 @@ end subroutine saviscous_fast_b
     real(kind=realtype) :: abs1
     real(kind=realtype) :: abs0
     qs = zero
-    do iii=0,nx*ny*nz-1
-      i = mod(iii, nx) + 2
-      j = mod(iii/nx, ny) + 2
-      k = iii/(nx*ny) + 2
+    do k=2, kl
+       do j=2, jl
+          do i=2, il
+    ! do iii=0,nx*ny*nz-1
+    !   i = mod(iii, nx) + 2
+    !   j = mod(iii/nx, ny) + 2
+    !   k = iii/(nx*ny) + 2
 ! compute the grid velocity if present.
 ! it is taken as the average of i and i-1,
       voli = half/vol(i, j, k)
@@ -9262,11 +9365,16 @@ end subroutine saviscous_fast_b
       wd(i, j, k, ivy) = wd(i, j, k, ivy) + ya*uud
       wd(i, j, k, ivz) = wd(i, j, k, ivz) + za*uud
     end do
+    end do
+    end do
     qs = zero
-    do iii=0,nx*ny*nz-1
-      i = mod(iii, nx) + 2
-      j = mod(iii/nx, ny) + 2
-      k = iii/(nx*ny) + 2
+    do k=2, kl
+       do j=2, jl
+          do i=2, il
+    ! do iii=0,nx*ny*nz-1
+    !   i = mod(iii, nx) + 2
+    !   j = mod(iii/nx, ny) + 2
+    !   k = iii/(nx*ny) + 2
 ! compute the grid velocity if present.
 ! it is taken as the average of j and j-1,
       voli = half/vol(i, j, k)
@@ -9488,13 +9596,18 @@ end subroutine saviscous_fast_b
       wd(i, j, k, ivy) = wd(i, j, k, ivy) + ya*uud
       wd(i, j, k, ivz) = wd(i, j, k, ivz) + za*uud
     end do
+    end do
+    end do
 ! initialize the grid velocity to zero. this value will be used
 ! if the block is not moving.
     qs = zero
-    do iii=0,nx*ny*nz-1
-      i = mod(iii, nx) + 2
-      j = mod(iii/nx, ny) + 2
-      k = iii/(nx*ny) + 2
+    do k=2, kl
+       do j=2, jl
+          do i=2, il
+    ! do iii=0,nx*ny*nz-1
+    !   i = mod(iii, nx) + 2
+    !   j = mod(iii/nx, ny) + 2
+    !   k = iii/(nx*ny) + 2
 ! compute the grid velocity if present.
 ! it is taken as the average of k and k-1,
       voli = half/vol(i, j, k)
@@ -9717,6 +9830,8 @@ end subroutine saviscous_fast_b
       wd(i, j, k, ivy) = wd(i, j, k, ivy) + ya*uud
       wd(i, j, k, ivz) = wd(i, j, k, ivz) + za*uud
     end do
+    end do
+    end do
 end subroutine turbadvection_fast_b
 
 !  differentiation of sasource in reverse (adjoint) mode (with options i4 dr8 r8 noisize):
@@ -9803,10 +9918,13 @@ subroutine sasource_fast_b()
     else
         strainmag2d = 0.0_8
         ssd = 0.0_8
-        do ii=0,nx*ny*nz-1
-            i = mod(ii, nx) + 2
-            j = mod(ii/nx, ny) + 2
-            k = ii/(nx*ny) + 2
+        do k=2, kl
+           do j=2, jl
+              do i=2, il
+        ! do ii=0,nx*ny*nz-1
+        !     i = mod(ii, nx) + 2
+        !     j = mod(ii/nx, ny) + 2
+        !     k = ii/(nx*ny) + 2
             ! compute the gradient of u in the cell center. use is made
             ! of the fact that the surrounding normals sum up to zero,
             ! such that the cell i,j,k does not give a contribution.
@@ -10157,6 +10275,8 @@ subroutine sasource_fast_b()
         wd(i, j-1, k, ivx) = wd(i, j-1, k, ivx) - sj(i, j-1, k, 1)*uuxd
         wd(i, j, k-1, ivx) = wd(i, j, k-1, ivx) - sk(i, j, k-1, 1)*uuxd
     end do
+    end do
+    end do
 end if
 end subroutine sasource_fast_b
 
@@ -10254,10 +10374,13 @@ end subroutine sasource_fast_b
 !
       select case  (precond)
       case (noprecond)
-        do ii=0,ie*je*ke-1
-          i = mod(ii, ie) + 1
-          j = mod(ii/ie, je) + 1
-          k = ii/(ie*je) + 1
+          do k=1,ke
+             do j=1,je
+                do i=1,ie
+        ! do ii=0,ie*je*ke-1
+        !   i = mod(ii, ie) + 1
+        !   j = mod(ii/ie, je) + 1
+        !   k = ii/(ie*je) + 1
 ! compute the velocities and speed of sound squared.
           uux = w(i, j, k, ivx)
           uuy = w(i, j, k, ivy)
@@ -10482,6 +10605,8 @@ branch = myIntStack(myIntPtr)
           wd(i, j, k, ivz) = wd(i, j, k, ivz) + uuzd
           wd(i, j, k, ivy) = wd(i, j, k, ivy) + uuyd
           wd(i, j, k, ivx) = wd(i, j, k, ivx) + uuxd
+        end do
+        end do
         end do
       end select
     end if
