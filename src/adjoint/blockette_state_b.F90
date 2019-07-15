@@ -6,7 +6,7 @@ module blockette_state_b
     ! code operates.
 
     ! Dummy Block dimensions
-    integer(kind=intType), parameter :: BS=8
+    integer(kind=intType), parameter :: BS=12
     integer(kind=intType), parameter :: bbil=BS+1, bbjl=BS+1, bbkl=BS+1
     integer(kind=intType), parameter :: bbie=BS+2, bbje=BS+2, bbke=BS+2
     integer(kind=intType), parameter :: bbib=BS+3, bbjb=BS+3, bbkb=BS+3
@@ -85,6 +85,9 @@ module blockette_state_b
     real(kind=realType), dimension(1:bbil, 1:bbjl, 1:bbkl) :: vxd, vyd, vzd
     real(kind=realType), dimension(1:bbil, 1:bbjl, 1:bbkl) :: wxd, wyd, wzd
     real(kind=realType), dimension(1:bbil, 1:bbjl, 1:bbkl) :: qxd, qyd, qzd
+
+    ! add a new int stack so that we prevent flow and output dependence during vectorization
+    real(kind=realType), dimension(0:bbib, 0:bbjb, 0:bbkb, 8) :: myIntStackB
 
     ! Make *all* of these variables tread-private
     !$OMP THREADPRIVATE(nx, ny, nz, il, jl, kl, ie, je, ke, ib, jb, kb)
@@ -189,23 +192,23 @@ contains
         ! &   sk, sfacei, sfacej, sfacek, dtl, gamma, vol, addgridvelocities, &
         ! &   sectionid
 
-        ! First, zero out all the timings
-        tCopy = zero
-        tZero = zero
-        tMetrics = zero
-        tResScale = zero
-        tSum = zero
-        tVisc = zero
-        tGrad = zero
-        tSS = zero
-        tDiss = zero
-        tInviscid = zero
-        tSAResScale = zero
-        tSAVisc = zero
-        tSAAdv = zero
-        tSASource = zero
-        tTimeStep = zero
-        tWrite = zero
+        ! ! First, zero out all the timings
+        ! tCopy = zero
+        ! tZero = zero
+        ! tMetrics = zero
+        ! tResScale = zero
+        ! tSum = zero
+        ! tVisc = zero
+        ! tGrad = zero
+        ! tSS = zero
+        ! tDiss = zero
+        ! tInviscid = zero
+        ! tSAResScale = zero
+        ! tSAVisc = zero
+        ! tSAAdv = zero
+        ! tSASource = zero
+        ! tTimeStep = zero
+        ! tWrite = zero
 
 
         ! We first need to copy the relevant variables from the block to the blockettes
@@ -215,8 +218,8 @@ contains
             do jj=2, bjl, BS
                 do ii=2, bil, BS
 
-                    call mpi_barrier(adflow_comm_world, ierr)
-                    timeA = mpi_wtime()
+                    ! call mpi_barrier(adflow_comm_world, ierr)
+                    ! timeA = mpi_wtime()
 
                     ! Determine the actual size this block will be and set
                     ! the sizes in the blockette module for each of the
@@ -523,10 +526,10 @@ contains
                        end do
                    end do
 
-                   call mpi_barrier(adflow_comm_world, ierr)
-                   timeB = mpi_wtime()
+                !    call mpi_barrier(adflow_comm_world, ierr)
+                !    timeB = mpi_wtime()
 
-                   tcopy = tcopy + (timeB-timeA)
+                !    tcopy = tcopy + (timeB-timeA)
 
                     ! Also clear out the access-only variables as these are all derivative seeds
                     scratchd = zero
@@ -553,31 +556,31 @@ contains
                     qyd = zero
                     qzd = zero
 
-                    call mpi_barrier(adflow_comm_world, ierr)
-                    timeA = mpi_wtime()
+                    ! call mpi_barrier(adflow_comm_world, ierr)
+                    ! timeA = mpi_wtime()
 
-                    tzero = tzero - (timeB-timeA)
+                    ! tzero = tzero - (timeB-timeA)
 
                 call metrics
 
-                call mpi_barrier(adflow_comm_world, ierr)
-                timeB = mpi_wtime()
+                ! call mpi_barrier(adflow_comm_world, ierr)
+                ! timeB = mpi_wtime()
 
-                tmetrics = tmetrics + (timeB-timeA)
+                ! tmetrics = tmetrics + (timeB-timeA)
 
                 ! Now we start running back through the main residual code:
                 call resScale_b
-                call mpi_barrier(adflow_comm_world, ierr)
-                timeA = mpi_wtime()
+                ! call mpi_barrier(adflow_comm_world, ierr)
+                ! timeA = mpi_wtime()
 
-                tresscale = tresScale - (timeB-timeA)
+                ! tresscale = tresScale - (timeB-timeA)
 
                 call sumDwAndFw_b
 
-                call mpi_barrier(adflow_comm_world, ierr)
-                timeB = mpi_wtime()
+                ! call mpi_barrier(adflow_comm_world, ierr)
+                ! timeB = mpi_wtime()
 
-                tsum = tsum + (timeB-timeA)
+                ! tsum = tsum + (timeB-timeA)
 
 
                 ! if (lowSpeedPreconditioner) then
@@ -588,31 +591,31 @@ contains
                 ! as those are never needed in reverse.
                 if (viscous) then
                     call viscousFlux_fast_b
-                    call mpi_barrier(adflow_comm_world, ierr)
-                    timeA = mpi_wtime()
+                    ! call mpi_barrier(adflow_comm_world, ierr)
+                    ! timeA = mpi_wtime()
 
-                    tvisc = tvisc - (timeB-timeA)
+                    ! tvisc = tvisc - (timeB-timeA)
 
                     call allNodalGradients_fast_b
-                    call mpi_barrier(adflow_comm_world, ierr)
-                    timeB = mpi_wtime()
+                    ! call mpi_barrier(adflow_comm_world, ierr)
+                    ! timeB = mpi_wtime()
 
-                    tgrad = tgrad + (timeB-timeA)
+                    ! tgrad = tgrad + (timeB-timeA)
 
 
                     call computeSpeedOfSoundSquared_b
-                    call mpi_barrier(adflow_comm_world, ierr)
-                    timeA = mpi_wtime()
+                    ! call mpi_barrier(adflow_comm_world, ierr)
+                    ! timeA = mpi_wtime()
 
-                    tss = tSS - (timeB-timeA)
+                    ! tss = tSS - (timeB-timeA)
                 end if
 
                 select case (spaceDiscr)
                 case (dissScalar)
                     call inviscidDissFluxScalar_fast_b
-                    call mpi_barrier(adflow_comm_world, ierr)
-                    timeB = mpi_wtime()
-                    tdiss = tdiss + (timeB-timeA)
+                    ! call mpi_barrier(adflow_comm_world, ierr)
+                    ! timeB = mpi_wtime()
+                    ! tdiss = tdiss + (timeB-timeA)
                 case (dissMatrix)
                     call inviscidDissFluxMatrix_fast_b
                 case (upwind)
@@ -620,49 +623,49 @@ contains
                 end select
 
                 call inviscidCentralFlux_fast_b
-                call mpi_barrier(adflow_comm_world, ierr)
-                timeA = mpi_wtime()
+                ! call mpi_barrier(adflow_comm_world, ierr)
+                ! timeA = mpi_wtime()
 
-                tInviscid = tinviscid - (timeB-timeA)
+                ! tInviscid = tinviscid - (timeB-timeA)
 
                 ! Compute turbulence residual for RANS equations
                 if( equations == RANSEquations) then
                     select case (turbModel)
                     case (spalartAllmaras)
                         call saResScale_fast_b
-                        call mpi_barrier(adflow_comm_world, ierr)
-                        timeB = mpi_wtime()
+                        ! call mpi_barrier(adflow_comm_world, ierr)
+                        ! timeB = mpi_wtime()
 
-                        tSAResScale = tSAResScale + (timeB-timeA)
+                        ! tSAResScale = tSAResScale + (timeB-timeA)
 
                         call saViscous_fast_b
-                        call mpi_barrier(adflow_comm_world, ierr)
-                        timeA = mpi_wtime()
+                        ! call mpi_barrier(adflow_comm_world, ierr)
+                        ! timeA = mpi_wtime()
 
-                        tsavisc = tsavisc - (timeB-timeA)
+                        ! tsavisc = tsavisc - (timeB-timeA)
 
                         !call unsteadyTurbTerm_b(1_intType, 1_intType, itu1-1, qq)
                         call turbAdvection_fast_b(1_intType, 1_intType, itu1-1, qq)
-                        call mpi_barrier(adflow_comm_world, ierr)
-                        timeB = mpi_wtime()
+                        ! call mpi_barrier(adflow_comm_world, ierr)
+                        ! timeB = mpi_wtime()
 
-                        tsaadv = tSAAdv + (timeB-timeA)
+                        ! tsaadv = tSAAdv + (timeB-timeA)
 
                         call saSource_fast_b
-                        call mpi_barrier(adflow_comm_world, ierr)
-                        timeA = mpi_wtime()
+                        ! call mpi_barrier(adflow_comm_world, ierr)
+                        ! timeA = mpi_wtime()
 
-                        tSASource = tSASource - (timeB-timeA)
+                        ! tSASource = tSASource - (timeB-timeA)
                     end select
 
                     !call unsteadyTurbSpectral_block_b(itu1, itu1, nn, sps)
                 end if
 
                 call timeStep_block_fast_b(.false.)
-                call mpi_barrier(adflow_comm_world, ierr)
-                timeB = mpi_wtime()
+                ! call mpi_barrier(adflow_comm_world, ierr)
+                ! timeB = mpi_wtime()
 
-                tTimeStep = tTimeStep + (timeB-timeA)
+                ! tTimeStep = tTimeStep + (timeB-timeA)
 
                 ! we now need to copy the blockette variables to the blocks and we are done
                 ! Note: we need to write out all the AD seeds that we have modified, turns out this list is pretty extensive, so be careful here. Furthermore, we need to accumulate AD seeds for overlapping variables (i.e. single and double halos)
@@ -707,10 +710,10 @@ contains
                    end do
                end do
 
-               call mpi_barrier(adflow_comm_world, ierr)
-               timeA = mpi_wtime()
+            !    call mpi_barrier(adflow_comm_world, ierr)
+            !    timeA = mpi_wtime()
 
-               twrite = twrite - (timeB-timeA)
+            !    twrite = twrite - (timeB-timeA)
 
 
 
@@ -730,30 +733,30 @@ contains
    end do
    !$OMP END PARALLEL DO
 
-   if (myID .eq. zero) then
-       ! Print all timings
+!    if (myID .eq. zero) then
+!        ! Print all timings
 
-       print *,"Begin timings:"
+!        print *,"Begin timings:"
 
-        print *,tCopy, " copy variables to blockette"
-       print *,tZero, " zero ad seeds"
-       print *,tMetrics, " metrics"
-       print *,tResScale, " res scale"
-       print *,tSum, " sum fw and dw"
-        print *,tVisc, " viscous fluxes"
-       print *,tGrad, " nodal gradients"
-       print *,tSS, " speed of sound"
-        print *,tDiss, " JST dissipation (scalar)"
-       print *,tInviscid, " central inviscid fluxes"
-       print *,tSAResScale, " SA res scale"
-       print *,tSAVisc, " SA viscous"
-       print *,tSAAdv, " SA advection"
-       print *,tSASource, " SA source"
-        print *,tTimeStep, " time step"
-       print *,tWrite, " write out ad seeds"
+!         print *,tCopy, " copy variables to blockette"
+!        print *,tZero, " zero ad seeds"
+!        print *,tMetrics, " metrics"
+!        print *,tResScale, " res scale"
+!        print *,tSum, " sum fw and dw"
+!         print *,tVisc, " viscous fluxes"
+!        print *,tGrad, " nodal gradients"
+!        print *,tSS, " speed of sound"
+!         print *,tDiss, " JST dissipation (scalar)"
+!        print *,tInviscid, " central inviscid fluxes"
+!        print *,tSAResScale, " SA res scale"
+!        print *,tSAVisc, " SA viscous"
+!        print *,tSAAdv, " SA advection"
+!        print *,tSASource, " SA source"
+!         print *,tTimeStep, " time step"
+!        print *,tWrite, " write out ad seeds"
 
 
-   end if
+!    end if
 
 
 
@@ -1167,13 +1170,12 @@ subroutine viscousflux_fast_b()
             ! the gradients of the speed of sound squared for the heat
             ! flux.
             mul = por*(rlv(i, j, k)+rlv(i+1, j, k))
+            myIntPtr = myIntPtr + 1
             if (eddymodel) then
                 mue = por*(rev(i, j, k)+rev(i+1, j, k))
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 0
+                myintstackb(i,j,k,myIntPtr) = 0
             else
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 1
+                myintstackb(i,j,k,myIntPtr) = 1
             end if
             mut = mul + mue
             gm1 = half*(gamma(i, j, k)+gamma(i+1, j, k)) - one
@@ -1277,13 +1279,12 @@ subroutine viscousflux_fast_b()
                 ! compute denominator
                 den = sqrt(u_x*u_x + u_y*u_y + u_z*u_z + v_x*v_x + v_y*v_y + &
                 &           v_z*v_z + w_x*w_x + w_y*w_y + w_z*w_z)
+                myIntPtr = myIntPtr + 1
                 if (den .lt. xminn) then
                     den = xminn
-                    myIntPtr = myIntPtr + 1
-                    myIntStack(myIntPtr) = 0
+                    myintstackb(i,j,k,myIntPtr) = 0
                 else
-                    myIntPtr = myIntPtr + 1
-                    myIntStack(myIntPtr) = 1
+                    myintstackb(i,j,k,myIntPtr) = 1
                     den = den
                 end if
                 ! compute factor that will multiply all tensor components.
@@ -1313,7 +1314,7 @@ subroutine viscousflux_fast_b()
                 tauxz = mut*tauxzs - exz
                 tauyz = mut*tauyzs - eyz
                 myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 0
+                myintstackb(i,j,k,myIntPtr) = 0
             else
                 ! just apply the total viscosity to the stress tensor
                 tauxx = mut*tauxxs
@@ -1323,7 +1324,7 @@ subroutine viscousflux_fast_b()
                 tauxz = mut*tauxzs
                 tauyz = mut*tauyzs
                 myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 1
+                myintstackb(i,j,k,myIntPtr) = 1
             end if
             ! compute the average velocities for the face. remember that
             ! the velocities are stored and not the momentum.
@@ -1363,7 +1364,7 @@ subroutine viscousflux_fast_b()
             wd(i+1, j, k, ivy) = wd(i+1, j, k, ivy) + half*vbard
             wd(i, j, k, ivx) = wd(i, j, k, ivx) + half*ubard
             wd(i+1, j, k, ivx) = wd(i+1, j, k, ivx) + half*ubard
-            branch = myIntStack(myIntPtr)
+            branch = myintstackb(i,j,k,myIntPtr)
             myIntPtr = myIntPtr - 1
             if (branch .eq. 0) then
                 exzd = -tauxzd
@@ -1409,7 +1410,7 @@ subroutine viscousflux_fast_b()
                 tempd67 = ccr1*factd/den
                 mued = mued + tempd67
                 dend = -(mue*tempd67/den)
-                branch = myIntStack(myIntPtr)
+                branch = myintstackb(i,j,k,myIntPtr)
                 myIntPtr = myIntPtr - 1
                 if (branch .eq. 0) dend = 0.0_8
                 if (u_x**2 + u_y**2 + u_z**2 + v_x**2 + v_y**2 + v_z**2 + w_x&
@@ -1548,7 +1549,7 @@ subroutine viscousflux_fast_b()
         uxd(i, j, k) = uxd(i, j, k) + tempd59
         muld = mutd + factlamheat*heatcoefd
         mued = mued + mutd + factturbheat*heatcoefd
-        branch = myIntStack(myIntPtr)
+        branch = myintstackb(i,j,k,myIntPtr)
         myIntPtr = myIntPtr - 1
         if (branch .eq. 0) then
             revd(i, j, k) = revd(i, j, k) + por*mued
@@ -1580,13 +1581,12 @@ subroutine viscousflux_fast_b()
         ! the gradients of the speed of sound squared for the heat
         ! flux.
         mul = por*(rlv(i, j, k)+rlv(i, j+1, k))
+        myIntPtr = myIntPtr + 1
         if (eddymodel) then
             mue = por*(rev(i, j, k)+rev(i, j+1, k))
-            myIntPtr = myIntPtr + 1
-            myIntStack(myIntPtr) = 0
+            myintstackb(i,j,k,myIntPtr) = 0
         else
-            myIntPtr = myIntPtr + 1
-            myIntStack(myIntPtr) = 1
+            myintstackb(i,j,k,myIntPtr) = 1
         end if
         mut = mul + mue
         gm1 = half*(gamma(i, j, k)+gamma(i, j+1, k)) - one
@@ -1690,13 +1690,12 @@ subroutine viscousflux_fast_b()
             ! compute denominator
             den = sqrt(u_x*u_x + u_y*u_y + u_z*u_z + v_x*v_x + v_y*v_y + &
             &           v_z*v_z + w_x*w_x + w_y*w_y + w_z*w_z)
+            myIntPtr = myIntPtr + 1
             if (den .lt. xminn) then
                 den = xminn
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 0
+                myintstackb(i,j,k,myIntPtr) = 0
             else
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 1
+                myintstackb(i,j,k,myIntPtr) = 1
                 den = den
             end if
             ! compute factor that will multiply all tensor components.
@@ -1726,7 +1725,7 @@ subroutine viscousflux_fast_b()
             tauxz = mut*tauxzs - exz
             tauyz = mut*tauyzs - eyz
             myIntPtr = myIntPtr + 1
-            myIntStack(myIntPtr) = 0
+            myintstackb(i,j,k,myIntPtr) = 0
         else
             ! just apply the total viscosity to the stress tensor
             tauxx = mut*tauxxs
@@ -1736,7 +1735,7 @@ subroutine viscousflux_fast_b()
             tauxz = mut*tauxzs
             tauyz = mut*tauyzs
             myIntPtr = myIntPtr + 1
-            myIntStack(myIntPtr) = 1
+            myintstackb(i,j,k,myIntPtr) = 1
         end if
         ! compute the average velocities for the face. remember that
         ! the velocities are stored and not the momentum.
@@ -1776,7 +1775,7 @@ subroutine viscousflux_fast_b()
         wd(i, j+1, k, ivy) = wd(i, j+1, k, ivy) + half*vbard
         wd(i, j, k, ivx) = wd(i, j, k, ivx) + half*ubard
         wd(i, j+1, k, ivx) = wd(i, j+1, k, ivx) + half*ubard
-        branch = myIntStack(myIntPtr)
+        branch = myintstackb(i,j,k,myIntPtr)
         myIntPtr = myIntPtr - 1
         if (branch .eq. 0) then
             exzd = -tauxzd
@@ -1822,7 +1821,7 @@ subroutine viscousflux_fast_b()
             tempd43 = ccr1*factd/den
             mued = mued + tempd43
             dend = -(mue*tempd43/den)
-            branch = myIntStack(myIntPtr)
+            branch = myintstackb(i,j,k,myIntPtr)
             myIntPtr = myIntPtr - 1
             if (branch .eq. 0) dend = 0.0_8
             if (u_x**2 + u_y**2 + u_z**2 + v_x**2 + v_y**2 + v_z**2 + w_x&
@@ -1961,7 +1960,7 @@ subroutine viscousflux_fast_b()
     uxd(i, j, k) = uxd(i, j, k) + tempd35
     muld = mutd + factlamheat*heatcoefd
     mued = mued + mutd + factturbheat*heatcoefd
-    branch = myIntStack(myIntPtr)
+    branch = myintstackb(i,j,k,myIntPtr)
     myIntPtr = myIntPtr - 1
     if (branch .eq. 0) then
         revd(i, j, k) = revd(i, j, k) + por*mued
@@ -1997,13 +1996,12 @@ do k=1,kl
     ! the gradients of the speed of sound squared for the heat
     ! flux.
     mul = por*(rlv(i, j, k)+rlv(i, j, k+1))
+    myIntPtr = myIntPtr + 1
     if (eddymodel) then
         mue = por*(rev(i, j, k)+rev(i, j, k+1))
-        myIntPtr = myIntPtr + 1
-        myIntStack(myIntPtr) = 0
+        myintstackb(i,j,k,myIntPtr) = 0
     else
-        myIntPtr = myIntPtr + 1
-        myIntStack(myIntPtr) = 1
+        myintstackb(i,j,k,myIntPtr) = 1
     end if
     mut = mul + mue
     gm1 = half*(gamma(i, j, k)+gamma(i, j, k+1)) - one
@@ -2107,13 +2105,12 @@ do k=1,kl
         ! compute denominator
         den = sqrt(u_x*u_x + u_y*u_y + u_z*u_z + v_x*v_x + v_y*v_y + &
         &           v_z*v_z + w_x*w_x + w_y*w_y + w_z*w_z)
+        myIntPtr = myIntPtr + 1
         if (den .lt. xminn) then
             den = xminn
-            myIntPtr = myIntPtr + 1
-            myIntStack(myIntPtr) = 0
+            myintstackb(i,j,k,myIntPtr) = 0
         else
-            myIntPtr = myIntPtr + 1
-            myIntStack(myIntPtr) = 1
+            myintstackb(i,j,k,myIntPtr) = 1
             den = den
         end if
         ! compute factor that will multiply all tensor components.
@@ -2143,7 +2140,7 @@ do k=1,kl
         tauxz = mut*tauxzs - exz
         tauyz = mut*tauyzs - eyz
         myIntPtr = myIntPtr + 1
-        myIntStack(myIntPtr) = 0
+        myintstackb(i,j,k,myIntPtr) = 0
     else
         ! just apply the total viscosity to the stress tensor
         tauxx = mut*tauxxs
@@ -2153,7 +2150,7 @@ do k=1,kl
         tauxz = mut*tauxzs
         tauyz = mut*tauyzs
         myIntPtr = myIntPtr + 1
-        myIntStack(myIntPtr) = 1
+        myintstackb(i,j,k,myIntPtr) = 1
     end if
     ! compute the average velocities for the face. remember that
     ! the velocities are stored and not the momentum.
@@ -2193,7 +2190,7 @@ do k=1,kl
     wd(i, j, k+1, ivy) = wd(i, j, k+1, ivy) + half*vbard
     wd(i, j, k, ivx) = wd(i, j, k, ivx) + half*ubard
     wd(i, j, k+1, ivx) = wd(i, j, k+1, ivx) + half*ubard
-    branch = myIntStack(myIntPtr)
+    branch = myintstackb(i,j,k,myIntPtr)
     myIntPtr = myIntPtr - 1
     if (branch .eq. 0) then
         exzd = -tauxzd
@@ -2239,7 +2236,7 @@ do k=1,kl
         tempd19 = ccr1*factd/den
         mued = mued + tempd19
         dend = -(mue*tempd19/den)
-        branch = myIntStack(myIntPtr)
+        branch = myintstackb(i,j,k,myIntPtr)
         myIntPtr = myIntPtr - 1
         if (branch .eq. 0) dend = 0.0_8
         if (u_x**2 + u_y**2 + u_z**2 + v_x**2 + v_y**2 + v_z**2 + w_x&
@@ -2378,7 +2375,7 @@ uxd(i-1, j, k) = uxd(i-1, j, k) + tempd11
 uxd(i, j, k) = uxd(i, j, k) + tempd11
 muld = mutd + factlamheat*heatcoefd
 mued = mued + mutd + factturbheat*heatcoefd
-branch = myIntStack(myIntPtr)
+branch = myintstackb(i,j,k,myIntPtr)
 myIntPtr = myIntPtr - 1
 if (branch .eq. 0) then
     revd(i, j, k) = revd(i, j, k) + por*mued
@@ -2493,12 +2490,11 @@ subroutine allnodalgradients_fast_b()
         ! j-1 and substract it from the node j. for the heat flux it
         ! is reversed, because the negative of the gradient of the
         ! speed of sound must be computed.
+        myIntPtr = myIntPtr + 1
         if (i .gt. 1) then
-            myIntPtr = myIntPtr + 1
-            myIntStack(myIntPtr) = 0
+            myintstackb(i,j,k,myIntPtr) = 0
         else
-            myIntPtr = myIntPtr + 1
-            myIntStack(myIntPtr) = 1
+            myintstackb(i,j,k,myIntPtr) = 1
         end if
         if (i .lt. ie) then
             a2d = sy*qyd(i, j, k) + sx*qxd(i, j, k) + sz*qzd(i, j, k)
@@ -2511,7 +2507,7 @@ subroutine allnodalgradients_fast_b()
             ubard = 0.0_8
             a2d = 0.0_8
         end if
-        branch = myIntStack(myIntPtr)
+        branch = myintstackb(i,j,k,myIntPtr)
         myIntPtr = myIntPtr - 1
         if (branch .eq. 0) then
             a2d = a2d - sy*qyd(i-1, j, k) - sx*qxd(i-1, j, k) - sz*qzd(i-1, &
@@ -2572,12 +2568,11 @@ end do
         ! j-1 and substract it from the node j. for the heat flux it
         ! is reversed, because the negative of the gradient of the
         ! speed of sound must be computed.
+        myIntPtr = myIntPtr + 1
         if (j .gt. 1) then
-            myIntPtr = myIntPtr + 1
-            myIntStack(myIntPtr) = 0
+            myintstackb(i,j,k,myIntPtr) = 0
         else
-            myIntPtr = myIntPtr + 1
-            myIntStack(myIntPtr) = 1
+            myintstackb(i,j,k,myIntPtr) = 1
         end if
         if (j .lt. je) then
             a2d = sy*qyd(i, j, k) + sx*qxd(i, j, k) + sz*qzd(i, j, k)
@@ -2590,7 +2585,7 @@ end do
             ubard = 0.0_8
             a2d = 0.0_8
         end if
-        branch = myIntStack(myIntPtr)
+        branch = myintstackb(i,j,k,myIntPtr)
         myIntPtr = myIntPtr - 1
         if (branch .eq. 0) then
             a2d = a2d - sy*qyd(i, j-1, k) - sx*qxd(i, j-1, k) - sz*qzd(i, j-&
@@ -2651,12 +2646,11 @@ end do
         ! j-1 and substract it from the node j. for the heat flux it
         ! is reversed, because the negative of the gradient of the
         ! speed of sound must be computed.
+        myIntPtr = myIntPtr + 1
         if (k .gt. 1) then
-            myIntPtr = myIntPtr + 1
-            myIntStack(myIntPtr) = 0
+            myintstackb(i,j,k,myIntPtr) = 0
         else
-            myIntPtr = myIntPtr + 1
-            myIntStack(myIntPtr) = 1
+            myintstackb(i,j,k,myIntPtr) = 1
         end if
         if (k .lt. ke) then
             a2d = sy*qyd(i, j, k) + sx*qxd(i, j, k) + sz*qzd(i, j, k)
@@ -2669,7 +2663,7 @@ end do
             ubard = 0.0_8
             a2d = 0.0_8
         end if
-        branch = myIntStack(myIntPtr)
+        branch = myintstackb(i,j,k,myIntPtr)
         myIntPtr = myIntPtr - 1
         if (branch .eq. 0) then
             a2d = a2d - sy*qyd(i, j, k-1) - sx*qxd(i, j, k-1) - sz*qzd(i, j&
@@ -3011,6 +3005,7 @@ subroutine invisciddissfluxscalar_fast_b()
         dssd = 0.0_8
         do k=1,kl
            do j=2,jl
+             !DIR$ SIMD
               do i=2,il
         ! do ii=0,nx*ny*kl-1
         !     i = mod(ii, nx) + 2
@@ -3020,27 +3015,27 @@ subroutine invisciddissfluxscalar_fast_b()
             ppor = zero
             if (pork(i, j, k) .eq. normalflux) ppor = half
             rrad = ppor*(radk(i, j, k)+radk(i, j, k+1))
+            myIntPtr = myIntPtr + 1
             if (dss(i, j, k, 3) .lt. dss(i, j, k+1, 3)) then
                 y3 = dss(i, j, k+1, 3)
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 0
+                myintstackb(i,j,k,myIntPtr) = 0
             else
                 y3 = dss(i, j, k, 3)
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 1
+                myintstackb(i,j,k,myIntPtr) = 1
             end if
+            myIntPtr = myIntPtr + 1
             if (dssmax .gt. y3) then
                 min3 = y3
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 0
+                myintstackb(i,j,k,myIntPtr) = 0
             else
                 min3 = dssmax
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 1
+                myintstackb(i,j,k,myIntPtr) = 1
             end if
             dis2 = fis2*rrad*min3
             arg1 = fis4*rrad
-            dis4 = mydim(arg1, dis2)
+            ! dis4 = mydim(arg1, dis2)
+            dis4 = arg1 - dis2
+            if (dis4 .lt. 0.0) dis4 = 0.0
             ! compute and scatter the dissipative flux.
             ! density. store it in the mass flow of the
             ! appropriate sliding mesh interface.
@@ -3138,17 +3133,20 @@ subroutine invisciddissfluxscalar_fast_b()
             wd(i, j, k-1, irho) = wd(i, j, k-1, irho) - tempd19
             wd(i, j, k+1, irho) = wd(i, j, k+1, irho) + ddw1d
             wd(i, j, k, irho) = wd(i, j, k, irho) - ddw1d
-            call mydim_fast_b(arg1, arg1d, dis2, dis2d, dis4d)
+            ! call mydim_fast_b(arg1, arg1d, dis2, dis2d, dis4d)
+            if (arg1 - dis2 .lt. 0.0) dis4d = 0.0_8
+            arg1d = dis4d
+            dis2d = dis2d - dis4d
             rradd = fis2*min3*dis2d + fis4*arg1d
             min3d = fis2*rrad*dis2d
-            branch = myIntStack(myIntPtr)
+            branch = myintstackb(i,j,k,myIntPtr)
             myIntPtr = myIntPtr - 1
             if (branch .eq. 0) then
                 y3d = min3d
             else
                 y3d = 0.0_8
             end if
-            branch = myIntStack(myIntPtr)
+            branch = myintstackb(i,j,k,myIntPtr)
             myIntPtr = myIntPtr - 1
             if (branch .eq. 0) then
                 dssd(i, j, k+1, 3) = dssd(i, j, k+1, 3) + y3d
@@ -3163,6 +3161,7 @@ subroutine invisciddissfluxscalar_fast_b()
         radjd = 0.0_8
         do k=2,kl
            do j=1,jl
+              !DIR$ SIMD
               do i=2,il
         ! do ii=0,nx*jl*nz-1
         !     i = mod(ii, nx) + 2
@@ -3172,27 +3171,27 @@ subroutine invisciddissfluxscalar_fast_b()
             ppor = zero
             if (porj(i, j, k) .eq. normalflux) ppor = half
             rrad = ppor*(radj(i, j, k)+radj(i, j+1, k))
+            myIntPtr = myIntPtr + 1
             if (dss(i, j, k, 2) .lt. dss(i, j+1, k, 2)) then
                 y2 = dss(i, j+1, k, 2)
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 0
+                myintstackb(i,j,k,myIntPtr) = 0
             else
                 y2 = dss(i, j, k, 2)
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 1
+                myintstackb(i,j,k,myIntPtr) = 1
             end if
+            myIntPtr = myIntPtr + 1
             if (dssmax .gt. y2) then
                 min2 = y2
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 0
+                myintstackb(i,j,k,myIntPtr) = 0
             else
                 min2 = dssmax
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 1
+                myintstackb(i,j,k,myIntPtr) = 1
             end if
             dis2 = fis2*rrad*min2
             arg1 = fis4*rrad
-            dis4 = mydim(arg1, dis2)
+            ! dis4 = mydim(arg1, dis2)
+            dis4 = arg1 - dis2
+            if (dis4 .lt. 0.0) dis4 = 0.0
             ! compute and scatter the dissipative flux.
             ! density. store it in the mass flow of the
             ! appropriate sliding mesh interface.
@@ -3290,17 +3289,20 @@ subroutine invisciddissfluxscalar_fast_b()
             wd(i, j-1, k, irho) = wd(i, j-1, k, irho) - tempd14
             wd(i, j+1, k, irho) = wd(i, j+1, k, irho) + ddw1d
             wd(i, j, k, irho) = wd(i, j, k, irho) - ddw1d
-            call mydim_fast_b(arg1, arg1d, dis2, dis2d, dis4d)
+            ! call mydim_fast_b(arg1, arg1d, dis2, dis2d, dis4d)
+            if (arg1 - dis2 .lt. 0.0) dis4d = 0.0_8
+            arg1d = dis4d
+            dis2d = dis2d - dis4d
             rradd = fis2*min2*dis2d + fis4*arg1d
             min2d = fis2*rrad*dis2d
-            branch = myIntStack(myIntPtr)
+            branch = myintstackb(i,j,k,myIntPtr)
             myIntPtr = myIntPtr - 1
             if (branch .eq. 0) then
                 y2d = min2d
             else
                 y2d = 0.0_8
             end if
-            branch = myIntStack(myIntPtr)
+            branch = myintstackb(i,j,k,myIntPtr)
             myIntPtr = myIntPtr - 1
             if (branch .eq. 0) then
                 dssd(i, j+1, k, 2) = dssd(i, j+1, k, 2) + y2d
@@ -3315,6 +3317,7 @@ subroutine invisciddissfluxscalar_fast_b()
         radid = 0.0_8
         do k=2,kl
            do j=2,jl
+              !DIR$ SIMD
               do i=1,il
         ! do ii=0,il*ny*nz-1
         !     i = mod(ii, il) + 1
@@ -3324,27 +3327,27 @@ subroutine invisciddissfluxscalar_fast_b()
             ppor = zero
             if (pori(i, j, k) .eq. normalflux) ppor = half
             rrad = ppor*(radi(i, j, k)+radi(i+1, j, k))
+            myIntPtr = myIntPtr + 1
             if (dss(i, j, k, 1) .lt. dss(i+1, j, k, 1)) then
                 y1 = dss(i+1, j, k, 1)
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 0
+                myintstackb(i,j,k,myIntPtr) = 0
             else
                 y1 = dss(i, j, k, 1)
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 1
+                myintstackb(i,j,k,myIntPtr) = 1
             end if
+            myIntPtr = myIntPtr + 1
             if (dssmax .gt. y1) then
                 min1 = y1
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 0
+                myintstackb(i,j,k,myIntPtr) = 0
             else
                 min1 = dssmax
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 1
+                myintstackb(i,j,k,myIntPtr) = 1
             end if
             dis2 = fis2*rrad*min1
             arg1 = fis4*rrad
-            dis4 = mydim(arg1, dis2)
+            ! dis4 = mydim(arg1, dis2)
+            dis4 = arg1 - dis2
+            if (dis4 .lt. 0.0) dis4 = 0.0
             ! compute and scatter the dissipative flux.
             ! density. store it in the mass flow of the
             ! appropriate sliding mesh interface.
@@ -3442,17 +3445,20 @@ subroutine invisciddissfluxscalar_fast_b()
             wd(i-1, j, k, irho) = wd(i-1, j, k, irho) - tempd9
             wd(i+1, j, k, irho) = wd(i+1, j, k, irho) + ddw1d
             wd(i, j, k, irho) = wd(i, j, k, irho) - ddw1d
-            call mydim_fast_b(arg1, arg1d, dis2, dis2d, dis4d)
+            ! call mydim_fast_b(arg1, arg1d, dis2, dis2d, dis4d)
+            if (arg1 - dis2 .lt. 0.0) dis4d = 0.0_8
+            arg1d = dis4d
+            dis2d = dis2d - dis4d
             rradd = fis2*min1*dis2d + fis4*arg1d
             min1d = fis2*rrad*dis2d
-            branch = myIntStack(myIntPtr)
+            branch = myintstackb(i,j,k,myIntPtr)
             myIntPtr = myIntPtr - 1
             if (branch .eq. 0) then
                 y1d = min1d
             else
                 y1d = 0.0_8
             end if
-            branch = myIntStack(myIntPtr)
+            branch = myintstackb(i,j,k,myIntPtr)
             myIntPtr = myIntPtr - 1
             if (branch .eq. 0) then
                 dssd(i+1, j, k, 1) = dssd(i+1, j, k, 1) + y1d
@@ -3475,21 +3481,19 @@ subroutine invisciddissfluxscalar_fast_b()
         !     k = ii/(ie*je) + 1
             x1 = (ss(i+1, j, k)-two*ss(i, j, k)+ss(i-1, j, k))/(ss(i+1, j, k&
             &         )+two*ss(i, j, k)+ss(i-1, j, k)+sslim)
+            myIntPtr = myIntPtr + 1
             if (x1 .ge. 0.) then
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 0
+                myintstackb(i,j,k,myIntPtr) = 0
             else
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 1
+                myintstackb(i,j,k,myIntPtr) = 1
             end if
             x2 = (ss(i, j+1, k)-two*ss(i, j, k)+ss(i, j-1, k))/(ss(i, j+1, k&
             &         )+two*ss(i, j, k)+ss(i, j-1, k)+sslim)
+            myIntPtr = myIntPtr + 1
             if (x2 .ge. 0.) then
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 0
+                myintstackb(i,j,k,myIntPtr) = 0
             else
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 1
+                myintstackb(i,j,k,myIntPtr) = 1
             end if
             x3 = (ss(i, j, k+1)-two*ss(i, j, k)+ss(i, j, k-1))/(ss(i, j, k+1&
             &         )+two*ss(i, j, k)+ss(i, j, k-1)+sslim)
@@ -3507,7 +3511,7 @@ subroutine invisciddissfluxscalar_fast_b()
             ssd(i, j, k+1) = ssd(i, j, k+1) + tempd4 + tempd3
             ssd(i, j, k) = ssd(i, j, k) + two*tempd4 - two*tempd3
             ssd(i, j, k-1) = ssd(i, j, k-1) + tempd4 + tempd3
-            branch = myIntStack(myIntPtr)
+            branch = myintstackb(i,j,k,myIntPtr)
             myIntPtr = myIntPtr - 1
             if (branch .eq. 0) then
                 x2d = dssd(i, j, k, 2)
@@ -3523,7 +3527,7 @@ subroutine invisciddissfluxscalar_fast_b()
             ssd(i, j+1, k) = ssd(i, j+1, k) + tempd2 + tempd1
             ssd(i, j, k) = ssd(i, j, k) + two*tempd2 - two*tempd1
             ssd(i, j-1, k) = ssd(i, j-1, k) + tempd2 + tempd1
-            branch = myIntStack(myIntPtr)
+            branch = myintstackb(i,j,k,myIntPtr)
             myIntPtr = myIntPtr - 1
             if (branch .eq. 0) then
                 x1d = dssd(i, j, k, 1)
@@ -4192,23 +4196,21 @@ subroutine invisciddissfluxmatrix_fast_b()
             ! compute the dissipation coefficients for this face.
             ppor = zero
             if (pork(i, j, k) .eq. normalflux) ppor = one
+            myIntPtr = myIntPtr + 1
             if (dss(i, j, k, 3) .lt. dss(i, j, k+1, 3)) then
                 y3 = dss(i, j, k+1, 3)
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 0
+                myintstackb(i,j,k,myIntPtr) = 0
             else
                 y3 = dss(i, j, k, 3)
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 1
+                myintstackb(i,j,k,myIntPtr) = 1
             end if
+            myIntPtr = myIntPtr + 1
             if (dpmax .gt. y3) then
                 min3 = y3
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 0
+                myintstackb(i,j,k,myIntPtr) = 0
             else
                 min3 = dpmax
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 1
+                myintstackb(i,j,k,myIntPtr) = 1
             end if
             dis2 = ppor*fis2*min3
             arg1 = ppor*fis4
@@ -4237,19 +4239,18 @@ subroutine invisciddissfluxmatrix_fast_b()
             ! of rhok and store the average value of k. if not present,
             ! set both these values to zero, such that later on no
             ! decision needs to be made anymore.
+            myIntPtr = myIntPtr + 1
             if (correctfork) then
                 ddw6 = w(i, j, k+1, irho)*w(i, j, k+1, itu1) - w(i, j, k, irho&
                 &           )*w(i, j, k, itu1)
                 drk = dis2*ddw6 - dis4*(w(i, j, k+2, irho)*w(i, j, k+2, itu1)-&
                 &           w(i, j, k-1, irho)*w(i, j, k-1, itu1)-three*ddw6)
                 kavg = half*(w(i, j, k+1, itu1)+w(i, j, k, itu1))
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 1
+                myintstackb(i,j,k,myIntPtr) = 1
             else
                 drk = zero
                 kavg = zero
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 0
+                myintstackb(i,j,k,myIntPtr) = 0
             end if
             ! compute the average value of gamma and compute some
             ! expressions in which it occurs.
@@ -4283,64 +4284,58 @@ subroutine invisciddissfluxmatrix_fast_b()
             ! the mesh velocity if the face is moving. it must be
             ! divided by the area to obtain a true velocity.
             if (addgridvelocities) sface = sfacek(i, j, k)*tmp
+            myIntPtr = myIntPtr + 1
             if (unavg - sface + aavg .ge. 0.) then
                 lam1 = unavg - sface + aavg
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 0
+                myintstackb(i,j,k,myIntPtr) = 0
             else
                 lam1 = -(unavg-sface+aavg)
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 1
+                myintstackb(i,j,k,myIntPtr) = 1
             end if
+            myIntPtr = myIntPtr + 1
             if (unavg - sface - aavg .ge. 0.) then
                 lam2 = unavg - sface - aavg
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 0
+                myintstackb(i,j,k,myIntPtr) = 0
             else
                 lam2 = -(unavg-sface-aavg)
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 1
+                myintstackb(i,j,k,myIntPtr) = 1
             end if
+            myIntPtr = myIntPtr + 1
             if (unavg - sface .ge. 0.) then
                 lam3 = unavg - sface
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 0
+                myintstackb(i,j,k,myIntPtr) = 0
             else
                 lam3 = -(unavg-sface)
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 1
+                myintstackb(i,j,k,myIntPtr) = 1
             end if
             rrad = lam3 + aavg
+            myIntPtr = myIntPtr + 1
             if (lam1 .lt. epsacoustic*rrad) then
                 max10 = epsacoustic*rrad
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 0
+                myintstackb(i,j,k,myIntPtr) = 0
             else
                 max10 = lam1
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 1
+                myintstackb(i,j,k,myIntPtr) = 1
             end if
             ! multiply the eigenvalues by the area to obtain
             ! the correct values for the dissipation term.
             lam1 = max10*area
+            myIntPtr = myIntPtr + 1
             if (lam2 .lt. epsacoustic*rrad) then
                 max11 = epsacoustic*rrad
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 0
+                myintstackb(i,j,k,myIntPtr) = 0
             else
                 max11 = lam2
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 1
+                myintstackb(i,j,k,myIntPtr) = 1
             end if
             lam2 = max11*area
+            myIntPtr = myIntPtr + 1
             if (lam3 .lt. epsshear*rrad) then
                 max12 = epsshear*rrad
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 0
+                myintstackb(i,j,k,myIntPtr) = 0
             else
                 max12 = lam3
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 1
+                myintstackb(i,j,k,myIntPtr) = 1
             end if
             lam3 = max12*area
             ! some abbreviations, which occur quite often in the
@@ -4409,7 +4404,7 @@ subroutine invisciddissfluxmatrix_fast_b()
             lam1d = half*abv1d + half*abv2d
             lam2d = half*abv1d - half*abv2d
             max12d = area*lam3d
-            branch = myIntStack(myIntPtr)
+            branch = myintstackb(i,j,k,myIntPtr)
             myIntPtr = myIntPtr - 1
             if (branch .eq. 0) then
                 rradd = epsshear*max12d
@@ -4419,7 +4414,7 @@ subroutine invisciddissfluxmatrix_fast_b()
                 rradd = 0.0_8
             end if
             max11d = area*lam2d
-            branch = myIntStack(myIntPtr)
+            branch = myintstackb(i,j,k,myIntPtr)
             myIntPtr = myIntPtr - 1
             if (branch .eq. 0) then
                 rradd = rradd + epsacoustic*max11d
@@ -4428,7 +4423,7 @@ subroutine invisciddissfluxmatrix_fast_b()
                 lam2d = max11d
             end if
             max10d = area*lam1d
-            branch = myIntStack(myIntPtr)
+            branch = myintstackb(i,j,k,myIntPtr)
             myIntPtr = myIntPtr - 1
             if (branch .eq. 0) then
                 rradd = rradd + epsacoustic*max10d
@@ -4438,14 +4433,14 @@ subroutine invisciddissfluxmatrix_fast_b()
             end if
             lam3d = lam3d + rradd
             aavgd = rradd
-            branch = myIntStack(myIntPtr)
+            branch = myintstackb(i,j,k,myIntPtr)
             myIntPtr = myIntPtr - 1
             if (branch .eq. 0) then
                 unavgd = unavgd + lam3d
             else
                 unavgd = unavgd - lam3d
             end if
-            branch = myIntStack(myIntPtr)
+            branch = myintstackb(i,j,k,myIntPtr)
             myIntPtr = myIntPtr - 1
             if (branch .eq. 0) then
                 unavgd = unavgd + lam2d
@@ -4454,7 +4449,7 @@ subroutine invisciddissfluxmatrix_fast_b()
                 aavgd = aavgd + lam2d
                 unavgd = unavgd - lam2d
             end if
-            branch = myIntStack(myIntPtr)
+            branch = myintstackb(i,j,k,myIntPtr)
             myIntPtr = myIntPtr - 1
             if (branch .eq. 0) then
                 unavgd = unavgd + lam1d
@@ -4492,7 +4487,7 @@ subroutine invisciddissfluxmatrix_fast_b()
             wd(i, j, k, ivy) = wd(i, j, k, ivy) + half*vavgd
             wd(i, j, k+1, ivx) = wd(i, j, k+1, ivx) + half*uavgd
             wd(i, j, k, ivx) = wd(i, j, k, ivx) + half*uavgd
-            branch = myIntStack(myIntPtr)
+            branch = myintstackb(i,j,k,myIntPtr)
             myIntPtr = myIntPtr - 1
             if (branch .eq. 0) then
                 dis2d = 0.0_8
@@ -4588,14 +4583,14 @@ subroutine invisciddissfluxmatrix_fast_b()
             wd(i, j, k, irho) = wd(i, j, k, irho) - ddw1d
             call mydim_fast_b(arg1, arg1d, dis2, dis2d, dis4d)
             min3d = ppor*fis2*dis2d
-            branch = myIntStack(myIntPtr)
+            branch = myintstackb(i,j,k,myIntPtr)
             myIntPtr = myIntPtr - 1
             if (branch .eq. 0) then
                 y3d = min3d
             else
                 y3d = 0.0_8
             end if
-            branch = myIntStack(myIntPtr)
+            branch = myintstackb(i,j,k,myIntPtr)
             myIntPtr = myIntPtr - 1
             if (branch .eq. 0) then
                 dssd(i, j, k+1, 3) = dssd(i, j, k+1, 3) + y3d
@@ -4610,23 +4605,21 @@ subroutine invisciddissfluxmatrix_fast_b()
             ! compute the dissipation coefficients for this face.
             ppor = zero
             if (porj(i, j, k) .eq. normalflux) ppor = one
+            myIntPtr = myIntPtr + 1
             if (dss(i, j, k, 2) .lt. dss(i, j+1, k, 2)) then
                 y2 = dss(i, j+1, k, 2)
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 0
+                myintstackb(i,j,k,myIntPtr) = 0
             else
                 y2 = dss(i, j, k, 2)
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 1
+                myintstackb(i,j,k,myIntPtr) = 1
             end if
+            myIntPtr = myIntPtr + 1
             if (dpmax .gt. y2) then
                 min2 = y2
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 0
+                myintstackb(i,j,k,myIntPtr) = 0
             else
                 min2 = dpmax
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 1
+                myintstackb(i,j,k,myIntPtr) = 1
             end if
             dis2 = ppor*fis2*min2
             arg1 = ppor*fis4
@@ -4655,19 +4648,18 @@ subroutine invisciddissfluxmatrix_fast_b()
             ! of rhok and store the average value of k. if not present,
             ! set both these values to zero, such that later on no
             ! decision needs to be made anymore.
+            myIntPtr = myIntPtr + 1
             if (correctfork) then
                 ddw6 = w(i, j+1, k, irho)*w(i, j+1, k, itu1) - w(i, j, k, irho&
                 &           )*w(i, j, k, itu1)
                 drk = dis2*ddw6 - dis4*(w(i, j+2, k, irho)*w(i, j+2, k, itu1)-&
                 &           w(i, j-1, k, irho)*w(i, j-1, k, itu1)-three*ddw6)
                 kavg = half*(w(i, j, k, itu1)+w(i, j+1, k, itu1))
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 1
+                myintstackb(i,j,k,myIntPtr) = 1
             else
                 drk = zero
                 kavg = zero
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 0
+                myintstackb(i,j,k,myIntPtr) = 0
             end if
             ! compute the average value of gamma and compute some
             ! expressions in which it occurs.
@@ -4701,64 +4693,58 @@ subroutine invisciddissfluxmatrix_fast_b()
             ! the mesh velocity if the face is moving. it must be
             ! divided by the area to obtain a true velocity.
             if (addgridvelocities) sface = sfacej(i, j, k)*tmp
+            myIntPtr = myIntPtr + 1
             if (unavg - sface + aavg .ge. 0.) then
                 lam1 = unavg - sface + aavg
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 0
+                myintstackb(i,j,k,myIntPtr) = 0
             else
                 lam1 = -(unavg-sface+aavg)
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 1
+                myintstackb(i,j,k,myIntPtr) = 1
             end if
+            myIntPtr = myIntPtr + 1
             if (unavg - sface - aavg .ge. 0.) then
                 lam2 = unavg - sface - aavg
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 0
+                myintstackb(i,j,k,myIntPtr) = 0
             else
                 lam2 = -(unavg-sface-aavg)
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 1
+                myintstackb(i,j,k,myIntPtr) = 1
             end if
+            myIntPtr = myIntPtr + 1
             if (unavg - sface .ge. 0.) then
                 lam3 = unavg - sface
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 0
+                myintstackb(i,j,k,myIntPtr) = 0
             else
                 lam3 = -(unavg-sface)
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 1
+                myintstackb(i,j,k,myIntPtr) = 1
             end if
             rrad = lam3 + aavg
+            myIntPtr = myIntPtr + 1
             if (lam1 .lt. epsacoustic*rrad) then
                 max6 = epsacoustic*rrad
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 0
+                myintstackb(i,j,k,myIntPtr) = 0
             else
                 max6 = lam1
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 1
+                myintstackb(i,j,k,myIntPtr) = 1
             end if
             ! multiply the eigenvalues by the area to obtain
             ! the correct values for the dissipation term.
             lam1 = max6*area
+            myIntPtr = myIntPtr + 1
             if (lam2 .lt. epsacoustic*rrad) then
                 max7 = epsacoustic*rrad
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 0
+                myintstackb(i,j,k,myIntPtr) = 0
             else
                 max7 = lam2
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 1
+                myintstackb(i,j,k,myIntPtr) = 1
             end if
             lam2 = max7*area
+            myIntPtr = myIntPtr + 1
             if (lam3 .lt. epsshear*rrad) then
                 max8 = epsshear*rrad
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 0
+                myintstackb(i,j,k,myIntPtr) = 0
             else
                 max8 = lam3
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 1
+                myintstackb(i,j,k,myIntPtr) = 1
             end if
             lam3 = max8*area
             ! some abbreviations, which occur quite often in the
@@ -4827,7 +4813,7 @@ subroutine invisciddissfluxmatrix_fast_b()
             lam1d = half*abv1d + half*abv2d
             lam2d = half*abv1d - half*abv2d
             max8d = area*lam3d
-            branch = myIntStack(myIntPtr)
+            branch = myintstackb(i,j,k,myIntPtr)
             myIntPtr = myIntPtr - 1
             if (branch .eq. 0) then
                 rradd = epsshear*max8d
@@ -4837,7 +4823,7 @@ subroutine invisciddissfluxmatrix_fast_b()
                 rradd = 0.0_8
             end if
             max7d = area*lam2d
-            branch = myIntStack(myIntPtr)
+            branch = myintstackb(i,j,k,myIntPtr)
             myIntPtr = myIntPtr - 1
             if (branch .eq. 0) then
                 rradd = rradd + epsacoustic*max7d
@@ -4846,7 +4832,7 @@ subroutine invisciddissfluxmatrix_fast_b()
                 lam2d = max7d
             end if
             max6d = area*lam1d
-            branch = myIntStack(myIntPtr)
+            branch = myintstackb(i,j,k,myIntPtr)
             myIntPtr = myIntPtr - 1
             if (branch .eq. 0) then
                 rradd = rradd + epsacoustic*max6d
@@ -4856,14 +4842,14 @@ subroutine invisciddissfluxmatrix_fast_b()
             end if
             lam3d = lam3d + rradd
             aavgd = rradd
-            branch = myIntStack(myIntPtr)
+            branch = myintstackb(i,j,k,myIntPtr)
             myIntPtr = myIntPtr - 1
             if (branch .eq. 0) then
                 unavgd = unavgd + lam3d
             else
                 unavgd = unavgd - lam3d
             end if
-            branch = myIntStack(myIntPtr)
+            branch = myintstackb(i,j,k,myIntPtr)
             myIntPtr = myIntPtr - 1
             if (branch .eq. 0) then
                 unavgd = unavgd + lam2d
@@ -4872,7 +4858,7 @@ subroutine invisciddissfluxmatrix_fast_b()
                 aavgd = aavgd + lam2d
                 unavgd = unavgd - lam2d
             end if
-            branch = myIntStack(myIntPtr)
+            branch = myintstackb(i,j,k,myIntPtr)
             myIntPtr = myIntPtr - 1
             if (branch .eq. 0) then
                 unavgd = unavgd + lam1d
@@ -4910,7 +4896,7 @@ subroutine invisciddissfluxmatrix_fast_b()
             wd(i, j, k, ivy) = wd(i, j, k, ivy) + half*vavgd
             wd(i, j+1, k, ivx) = wd(i, j+1, k, ivx) + half*uavgd
             wd(i, j, k, ivx) = wd(i, j, k, ivx) + half*uavgd
-            branch = myIntStack(myIntPtr)
+            branch = myintstackb(i,j,k,myIntPtr)
             myIntPtr = myIntPtr - 1
             if (branch .eq. 0) then
                 dis2d = 0.0_8
@@ -5006,14 +4992,14 @@ subroutine invisciddissfluxmatrix_fast_b()
             wd(i, j, k, irho) = wd(i, j, k, irho) - ddw1d
             call mydim_fast_b(arg1, arg1d, dis2, dis2d, dis4d)
             min2d = ppor*fis2*dis2d
-            branch = myIntStack(myIntPtr)
+            branch = myintstackb(i,j,k,myIntPtr)
             myIntPtr = myIntPtr - 1
             if (branch .eq. 0) then
                 y2d = min2d
             else
                 y2d = 0.0_8
             end if
-            branch = myIntStack(myIntPtr)
+            branch = myintstackb(i,j,k,myIntPtr)
             myIntPtr = myIntPtr - 1
             if (branch .eq. 0) then
                 dssd(i, j+1, k, 2) = dssd(i, j+1, k, 2) + y2d
@@ -5028,23 +5014,21 @@ subroutine invisciddissfluxmatrix_fast_b()
             ! compute the dissipation coefficients for this face.
             ppor = zero
             if (pori(i, j, k) .eq. normalflux) ppor = one
+            myIntPtr = myIntPtr + 1
             if (dss(i, j, k, 1) .lt. dss(i+1, j, k, 1)) then
                 y1 = dss(i+1, j, k, 1)
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 0
+                myintstackb(i,j,k,myIntPtr) = 0
             else
                 y1 = dss(i, j, k, 1)
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 1
+                myintstackb(i,j,k,myIntPtr) = 1
             end if
+            myIntPtr = myIntPtr + 1
             if (dpmax .gt. y1) then
                 min1 = y1
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 0
+                myintstackb(i,j,k,myIntPtr) = 0
             else
                 min1 = dpmax
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 1
+                myintstackb(i,j,k,myIntPtr) = 1
             end if
             dis2 = ppor*fis2*min1
             arg1 = ppor*fis4
@@ -5073,19 +5057,18 @@ subroutine invisciddissfluxmatrix_fast_b()
             ! of rhok and store the average value of k. if not present,
             ! set both these values to zero, such that later on no
             ! decision needs to be made anymore.
+            myIntPtr = myIntPtr + 1
             if (correctfork) then
                 ddw6 = w(i+1, j, k, irho)*w(i+1, j, k, itu1) - w(i, j, k, irho&
                 &           )*w(i, j, k, itu1)
                 drk = dis2*ddw6 - dis4*(w(i+2, j, k, irho)*w(i+2, j, k, itu1)-&
                 &           w(i-1, j, k, irho)*w(i-1, j, k, itu1)-three*ddw6)
                 kavg = half*(w(i, j, k, itu1)+w(i+1, j, k, itu1))
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 1
+                myintstackb(i,j,k,myIntPtr) = 1
             else
                 drk = zero
                 kavg = zero
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 0
+                myintstackb(i,j,k,myIntPtr) = 0
             end if
             ! compute the average value of gamma and compute some
             ! expressions in which it occurs.
@@ -5119,64 +5102,58 @@ subroutine invisciddissfluxmatrix_fast_b()
             ! the mesh velocity if the face is moving. it must be
             ! divided by the area to obtain a true velocity.
             if (addgridvelocities) sface = sfacei(i, j, k)*tmp
+            myIntPtr = myIntPtr + 1
             if (unavg - sface + aavg .ge. 0.) then
                 lam1 = unavg - sface + aavg
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 0
+                myintstackb(i,j,k,myIntPtr) = 0
             else
                 lam1 = -(unavg-sface+aavg)
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 1
+                myintstackb(i,j,k,myIntPtr) = 1
             end if
+            myIntPtr = myIntPtr + 1
             if (unavg - sface - aavg .ge. 0.) then
                 lam2 = unavg - sface - aavg
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 0
+                myintstackb(i,j,k,myIntPtr) = 0
             else
                 lam2 = -(unavg-sface-aavg)
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 1
+                myintstackb(i,j,k,myIntPtr) = 1
             end if
+            myIntPtr = myIntPtr + 1
             if (unavg - sface .ge. 0.) then
                 lam3 = unavg - sface
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 0
+                myintstackb(i,j,k,myIntPtr) = 0
             else
                 lam3 = -(unavg-sface)
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 1
+                myintstackb(i,j,k,myIntPtr) = 1
             end if
             rrad = lam3 + aavg
+            myIntPtr = myIntPtr + 1
             if (lam1 .lt. epsacoustic*rrad) then
                 max2 = epsacoustic*rrad
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 0
+                myintstackb(i,j,k,myIntPtr) = 0
             else
                 max2 = lam1
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 1
+                myintstackb(i,j,k,myIntPtr) = 1
             end if
             ! multiply the eigenvalues by the area to obtain
             ! the correct values for the dissipation term.
             lam1 = max2*area
+            myIntPtr = myIntPtr + 1
             if (lam2 .lt. epsacoustic*rrad) then
                 max3 = epsacoustic*rrad
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 0
+                myintstackb(i,j,k,myIntPtr) = 0
             else
                 max3 = lam2
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 1
+                myintstackb(i,j,k,myIntPtr) = 1
             end if
             lam2 = max3*area
+            myIntPtr = myIntPtr + 1
             if (lam3 .lt. epsshear*rrad) then
                 max4 = epsshear*rrad
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 0
+                myintstackb(i,j,k,myIntPtr) = 0
             else
                 max4 = lam3
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 1
+                myintstackb(i,j,k,myIntPtr) = 1
             end if
             lam3 = max4*area
             ! some abbreviations, which occur quite often in the
@@ -5245,7 +5222,7 @@ subroutine invisciddissfluxmatrix_fast_b()
             lam1d = half*abv1d + half*abv2d
             lam2d = half*abv1d - half*abv2d
             max4d = area*lam3d
-            branch = myIntStack(myIntPtr)
+            branch = myintstackb(i,j,k,myIntPtr)
             myIntPtr = myIntPtr - 1
             if (branch .eq. 0) then
                 rradd = epsshear*max4d
@@ -5255,7 +5232,7 @@ subroutine invisciddissfluxmatrix_fast_b()
                 rradd = 0.0_8
             end if
             max3d = area*lam2d
-            branch = myIntStack(myIntPtr)
+            branch = myintstackb(i,j,k,myIntPtr)
             myIntPtr = myIntPtr - 1
             if (branch .eq. 0) then
                 rradd = rradd + epsacoustic*max3d
@@ -5264,7 +5241,7 @@ subroutine invisciddissfluxmatrix_fast_b()
                 lam2d = max3d
             end if
             max2d = area*lam1d
-            branch = myIntStack(myIntPtr)
+            branch = myintstackb(i,j,k,myIntPtr)
             myIntPtr = myIntPtr - 1
             if (branch .eq. 0) then
                 rradd = rradd + epsacoustic*max2d
@@ -5274,14 +5251,14 @@ subroutine invisciddissfluxmatrix_fast_b()
             end if
             lam3d = lam3d + rradd
             aavgd = rradd
-            branch = myIntStack(myIntPtr)
+            branch = myintstackb(i,j,k,myIntPtr)
             myIntPtr = myIntPtr - 1
             if (branch .eq. 0) then
                 unavgd = unavgd + lam3d
             else
                 unavgd = unavgd - lam3d
             end if
-            branch = myIntStack(myIntPtr)
+            branch = myintstackb(i,j,k,myIntPtr)
             myIntPtr = myIntPtr - 1
             if (branch .eq. 0) then
                 unavgd = unavgd + lam2d
@@ -5290,7 +5267,7 @@ subroutine invisciddissfluxmatrix_fast_b()
                 aavgd = aavgd + lam2d
                 unavgd = unavgd - lam2d
             end if
-            branch = myIntStack(myIntPtr)
+            branch = myintstackb(i,j,k,myIntPtr)
             myIntPtr = myIntPtr - 1
             if (branch .eq. 0) then
                 unavgd = unavgd + lam1d
@@ -5328,7 +5305,7 @@ subroutine invisciddissfluxmatrix_fast_b()
             wd(i, j, k, ivy) = wd(i, j, k, ivy) + half*vavgd
             wd(i+1, j, k, ivx) = wd(i+1, j, k, ivx) + half*uavgd
             wd(i, j, k, ivx) = wd(i, j, k, ivx) + half*uavgd
-            branch = myIntStack(myIntPtr)
+            branch = myintstackb(i,j,k,myIntPtr)
             myIntPtr = myIntPtr - 1
             if (branch .eq. 0) then
                 dis2d = 0.0_8
@@ -5424,14 +5401,14 @@ subroutine invisciddissfluxmatrix_fast_b()
             wd(i, j, k, irho) = wd(i, j, k, irho) - ddw1d
             call mydim_fast_b(arg1, arg1d, dis2, dis2d, dis4d)
             min1d = ppor*fis2*dis2d
-            branch = myIntStack(myIntPtr)
+            branch = myintstackb(i,j,k,myIntPtr)
             myIntPtr = myIntPtr - 1
             if (branch .eq. 0) then
                 y1d = min1d
             else
                 y1d = 0.0_8
             end if
-            branch = myIntStack(myIntPtr)
+            branch = myintstackb(i,j,k,myIntPtr)
             myIntPtr = myIntPtr - 1
             if (branch .eq. 0) then
                 dssd(i+1, j, k, 1) = dssd(i+1, j, k, 1) + y1d
@@ -5443,79 +5420,71 @@ subroutine invisciddissfluxmatrix_fast_b()
             i = mod(ii, ie) + 1
             j = mod(ii/ie, je) + 1
             k = ii/(ie*je) + 1
+            myIntPtr = myIntPtr + 1
             if (p(i+1, j, k) - p(i, j, k) .ge. 0.) then
                 abs1 = p(i+1, j, k) - p(i, j, k)
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 1
+                myintstackb(i,j,k,myIntPtr) = 1
             else
                 abs1 = -(p(i+1, j, k)-p(i, j, k))
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 0
+                myintstackb(i,j,k,myIntPtr) = 0
             end if
+            myIntPtr = myIntPtr + 1
             if (p(i, j, k) - p(i-1, j, k) .ge. 0.) then
                 abs4 = p(i, j, k) - p(i-1, j, k)
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 0
+                myintstackb(i,j,k,myIntPtr) = 0
             else
                 abs4 = -(p(i, j, k)-p(i-1, j, k))
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 1
+                myintstackb(i,j,k,myIntPtr) = 1
             end if
             x1 = (p(i+1, j, k)-two*p(i, j, k)+p(i-1, j, k))/(omega*(p(i+1, j&
             &         , k)+two*p(i, j, k)+p(i-1, j, k))+oneminomega*(abs1+abs4)+plim&
             &         )
+            myIntPtr = myIntPtr + 1
             if (x1 .ge. 0.) then
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 0
+                myintstackb(i,j,k,myIntPtr) = 0
             else
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 1
+                myintstackb(i,j,k,myIntPtr) = 1
             end if
+            myIntPtr = myIntPtr + 1
             if (p(i, j+1, k) - p(i, j, k) .ge. 0.) then
                 abs2 = p(i, j+1, k) - p(i, j, k)
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 1
+                myintstackb(i,j,k,myIntPtr) = 1
             else
                 abs2 = -(p(i, j+1, k)-p(i, j, k))
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 0
+                myintstackb(i,j,k,myIntPtr) = 0
             end if
+            myIntPtr = myIntPtr + 1
             if (p(i, j, k) - p(i, j-1, k) .ge. 0.) then
                 abs5 = p(i, j, k) - p(i, j-1, k)
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 0
+                myintstackb(i,j,k,myIntPtr) = 0
             else
                 abs5 = -(p(i, j, k)-p(i, j-1, k))
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 1
+                myintstackb(i,j,k,myIntPtr) = 1
             end if
             x2 = (p(i, j+1, k)-two*p(i, j, k)+p(i, j-1, k))/(omega*(p(i, j+1&
             &         , k)+two*p(i, j, k)+p(i, j-1, k))+oneminomega*(abs2+abs5)+plim&
             &         )
+            myIntPtr = myIntPtr + 1
             if (x2 .ge. 0.) then
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 0
+                myintstackb(i,j,k,myIntPtr) = 0
             else
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 1
+                myintstackb(i,j,k,myIntPtr) = 1
             end if
+            myIntPtr = myIntPtr + 1
             if (p(i, j, k+1) - p(i, j, k) .ge. 0.) then
                 abs3 = p(i, j, k+1) - p(i, j, k)
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 1
+                myintstackb(i,j,k,myIntPtr) = 1
             else
                 abs3 = -(p(i, j, k+1)-p(i, j, k))
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 0
+                myintstackb(i,j,k,myIntPtr) = 0
             end if
+            myIntPtr = myIntPtr + 1
             if (p(i, j, k) - p(i, j, k-1) .ge. 0.) then
                 abs6 = p(i, j, k) - p(i, j, k-1)
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 0
+                myintstackb(i,j,k,myIntPtr) = 0
             else
                 abs6 = -(p(i, j, k)-p(i, j, k-1))
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 1
+                myintstackb(i,j,k,myIntPtr) = 1
             end if
             x3 = (p(i, j, k+1)-two*p(i, j, k)+p(i, j, k-1))/(omega*(p(i, j, &
             &         k+1)+two*p(i, j, k)+p(i, j, k-1))+oneminomega*(abs3+abs6)+plim&
@@ -5538,7 +5507,7 @@ subroutine invisciddissfluxmatrix_fast_b()
             pd(i, j, k-1) = pd(i, j, k-1) + tempd7 + tempd5
             abs3d = oneminomega*tempd6
             abs6d = oneminomega*tempd6
-            branch = myIntStack(myIntPtr)
+            branch = myintstackb(i,j,k,myIntPtr)
             myIntPtr = myIntPtr - 1
             if (branch .eq. 0) then
                 pd(i, j, k) = pd(i, j, k) + abs6d
@@ -5547,7 +5516,7 @@ subroutine invisciddissfluxmatrix_fast_b()
                 pd(i, j, k-1) = pd(i, j, k-1) + abs6d
                 pd(i, j, k) = pd(i, j, k) - abs6d
             end if
-            branch = myIntStack(myIntPtr)
+            branch = myintstackb(i,j,k,myIntPtr)
             myIntPtr = myIntPtr - 1
             if (branch .eq. 0) then
                 pd(i, j, k) = pd(i, j, k) + abs3d
@@ -5556,7 +5525,7 @@ subroutine invisciddissfluxmatrix_fast_b()
                 pd(i, j, k+1) = pd(i, j, k+1) + abs3d
                 pd(i, j, k) = pd(i, j, k) - abs3d
             end if
-            branch = myIntStack(myIntPtr)
+            branch = myintstackb(i,j,k,myIntPtr)
             myIntPtr = myIntPtr - 1
             if (branch .eq. 0) then
                 x2d = dssd(i, j, k, 2)
@@ -5576,7 +5545,7 @@ subroutine invisciddissfluxmatrix_fast_b()
             pd(i, j-1, k) = pd(i, j-1, k) + tempd4 + tempd2
             abs2d = oneminomega*tempd3
             abs5d = oneminomega*tempd3
-            branch = myIntStack(myIntPtr)
+            branch = myintstackb(i,j,k,myIntPtr)
             myIntPtr = myIntPtr - 1
             if (branch .eq. 0) then
                 pd(i, j, k) = pd(i, j, k) + abs5d
@@ -5585,7 +5554,7 @@ subroutine invisciddissfluxmatrix_fast_b()
                 pd(i, j-1, k) = pd(i, j-1, k) + abs5d
                 pd(i, j, k) = pd(i, j, k) - abs5d
             end if
-            branch = myIntStack(myIntPtr)
+            branch = myintstackb(i,j,k,myIntPtr)
             myIntPtr = myIntPtr - 1
             if (branch .eq. 0) then
                 pd(i, j, k) = pd(i, j, k) + abs2d
@@ -5594,7 +5563,7 @@ subroutine invisciddissfluxmatrix_fast_b()
                 pd(i, j+1, k) = pd(i, j+1, k) + abs2d
                 pd(i, j, k) = pd(i, j, k) - abs2d
             end if
-            branch = myIntStack(myIntPtr)
+            branch = myintstackb(i,j,k,myIntPtr)
             myIntPtr = myIntPtr - 1
             if (branch .eq. 0) then
                 x1d = dssd(i, j, k, 1)
@@ -5614,7 +5583,7 @@ subroutine invisciddissfluxmatrix_fast_b()
             pd(i-1, j, k) = pd(i-1, j, k) + tempd1 + tempd
             abs1d = oneminomega*tempd0
             abs4d = oneminomega*tempd0
-            branch = myIntStack(myIntPtr)
+            branch = myintstackb(i,j,k,myIntPtr)
             myIntPtr = myIntPtr - 1
             if (branch .eq. 0) then
                 pd(i, j, k) = pd(i, j, k) + abs4d
@@ -5623,7 +5592,7 @@ subroutine invisciddissfluxmatrix_fast_b()
                 pd(i-1, j, k) = pd(i-1, j, k) + abs4d
                 pd(i, j, k) = pd(i, j, k) - abs4d
             end if
-            branch = myIntStack(myIntPtr)
+            branch = myintstackb(i,j,k,myIntPtr)
             myIntPtr = myIntPtr - 1
             if (branch .eq. 0) then
                 pd(i, j, k) = pd(i, j, k) + abs1d
@@ -5779,13 +5748,12 @@ subroutine inviscidupwindflux_fast_b(finegrid)
                         sx = si(i, j, k, 1)
                         sy = si(i, j, k, 2)
                         sz = si(i, j, k, 3)
+                        myIntPtr = myIntPtr + 1
                         if (addgridvelocities) then
                             sface = sfacei(i, j, k)
-                            myIntPtr = myIntPtr + 1
-                            myIntStack(myIntPtr) = 0
+                            myintstackb(i,j,k,myIntPtr) = 0
                         else
-                            myIntPtr = myIntPtr + 1
-                            myIntStack(myIntPtr) = 1
+                            myintstackb(i,j,k,myIntPtr) = 1
                         end if
                         ! determine the left and right state.
                         left(irho) = w(i, j, k, irho)
@@ -5793,26 +5761,24 @@ subroutine inviscidupwindflux_fast_b(finegrid)
                         left(ivy) = w(i, j, k, ivy)
                         left(ivz) = w(i, j, k, ivz)
                         left(irhoe) = p(i, j, k)
+                        myIntPtr = myIntPtr + 1
                         if (correctfork) then
                             left(itu1) = w(i, j, k, itu1)
-                            myIntPtr = myIntPtr + 1
-                            myIntStack(myIntPtr) = 0
+                            myintstackb(i,j,k,myIntPtr) = 0
                         else
-                            myIntPtr = myIntPtr + 1
-                            myIntStack(myIntPtr) = 1
+                            myintstackb(i,j,k,myIntPtr) = 1
                         end if
                         right(irho) = w(i+1, j, k, irho)
                         right(ivx) = w(i+1, j, k, ivx)
                         right(ivy) = w(i+1, j, k, ivy)
                         right(ivz) = w(i+1, j, k, ivz)
                         right(irhoe) = p(i+1, j, k)
+                        myIntPtr = myIntPtr + 1
                         if (correctfork) then
                             right(itu1) = w(i+1, j, k, itu1)
-                            myIntPtr = myIntPtr + 1
-                            myIntStack(myIntPtr) = 0
+                            myintstackb(i,j,k,myIntPtr) = 0
                         else
-                            myIntPtr = myIntPtr + 1
-                            myIntStack(myIntPtr) = 1
+                            myintstackb(i,j,k,myIntPtr) = 1
                         end if
                     end do
                 end do
@@ -5828,13 +5794,12 @@ subroutine inviscidupwindflux_fast_b(finegrid)
                         sx = sj(i, j, k, 1)
                         sy = sj(i, j, k, 2)
                         sz = sj(i, j, k, 3)
+                        myIntPtr = myIntPtr + 1
                         if (addgridvelocities) then
                             sface = sfacej(i, j, k)
-                            myIntPtr = myIntPtr + 1
-                            myIntStack(myIntPtr) = 0
+                            myintstackb(i,j,k,myIntPtr) = 0
                         else
-                            myIntPtr = myIntPtr + 1
-                            myIntStack(myIntPtr) = 1
+                            myintstackb(i,j,k,myIntPtr) = 1
                         end if
                         ! determine the left and right state.
                         left(irho) = w(i, j, k, irho)
@@ -5842,26 +5807,24 @@ subroutine inviscidupwindflux_fast_b(finegrid)
                         left(ivy) = w(i, j, k, ivy)
                         left(ivz) = w(i, j, k, ivz)
                         left(irhoe) = p(i, j, k)
+                        myIntPtr = myIntPtr + 1
                         if (correctfork) then
                             left(itu1) = w(i, j, k, itu1)
-                            myIntPtr = myIntPtr + 1
-                            myIntStack(myIntPtr) = 0
+                            myintstackb(i,j,k,myIntPtr) = 0
                         else
-                            myIntPtr = myIntPtr + 1
-                            myIntStack(myIntPtr) = 1
+                            myintstackb(i,j,k,myIntPtr) = 1
                         end if
                         right(irho) = w(i, j+1, k, irho)
                         right(ivx) = w(i, j+1, k, ivx)
                         right(ivy) = w(i, j+1, k, ivy)
                         right(ivz) = w(i, j+1, k, ivz)
                         right(irhoe) = p(i, j+1, k)
+                        myIntPtr = myIntPtr + 1
                         if (correctfork) then
                             right(itu1) = w(i, j+1, k, itu1)
-                            myIntPtr = myIntPtr + 1
-                            myIntStack(myIntPtr) = 0
+                            myintstackb(i,j,k,myIntPtr) = 0
                         else
-                            myIntPtr = myIntPtr + 1
-                            myIntStack(myIntPtr) = 1
+                            myintstackb(i,j,k,myIntPtr) = 1
                         end if
                     end do
                 end do
@@ -5877,13 +5840,12 @@ subroutine inviscidupwindflux_fast_b(finegrid)
                         sx = sk(i, j, k, 1)
                         sy = sk(i, j, k, 2)
                         sz = sk(i, j, k, 3)
+                        myIntPtr = myIntPtr + 1
                         if (addgridvelocities) then
                             sface = sfacek(i, j, k)
-                            myIntPtr = myIntPtr + 1
-                            myIntStack(myIntPtr) = 0
+                            myintstackb(i,j,k,myIntPtr) = 0
                         else
-                            myIntPtr = myIntPtr + 1
-                            myIntStack(myIntPtr) = 1
+                            myintstackb(i,j,k,myIntPtr) = 1
                         end if
                         ! determine the left and right state.
                         left(irho) = w(i, j, k, irho)
@@ -5891,26 +5853,24 @@ subroutine inviscidupwindflux_fast_b(finegrid)
                         left(ivy) = w(i, j, k, ivy)
                         left(ivz) = w(i, j, k, ivz)
                         left(irhoe) = p(i, j, k)
+                        myIntPtr = myIntPtr + 1
                         if (correctfork) then
                             left(itu1) = w(i, j, k, itu1)
-                            myIntPtr = myIntPtr + 1
-                            myIntStack(myIntPtr) = 0
+                            myintstackb(i,j,k,myIntPtr) = 0
                         else
-                            myIntPtr = myIntPtr + 1
-                            myIntStack(myIntPtr) = 1
+                            myintstackb(i,j,k,myIntPtr) = 1
                         end if
                         right(irho) = w(i, j, k+1, irho)
                         right(ivx) = w(i, j, k+1, ivx)
                         right(ivy) = w(i, j, k+1, ivy)
                         right(ivz) = w(i, j, k+1, ivz)
                         right(irhoe) = p(i, j, k+1)
+                        myIntPtr = myIntPtr + 1
                         if (correctfork) then
                             right(itu1) = w(i, j, k+1, itu1)
-                            myIntPtr = myIntPtr + 1
-                            myIntStack(myIntPtr) = 0
+                            myintstackb(i,j,k,myIntPtr) = 0
                         else
-                            myIntPtr = myIntPtr + 1
-                            myIntStack(myIntPtr) = 1
+                            myintstackb(i,j,k,myIntPtr) = 1
                         end if
                     end do
                 end do
@@ -5935,7 +5895,7 @@ subroutine inviscidupwindflux_fast_b(finegrid)
                         por = pork(i, j, k)
                         call riemannflux_fast_b(left, leftd, right, rightd, flux, &
                         &                               fluxd)
-                        branch = myIntStack(myIntPtr)
+                        branch = myintstackb(i,j,k,myIntPtr)
                         myIntPtr = myIntPtr - 1
                         if (branch .eq. 0) then
                             wd(i, j, k+1, itu1) = wd(i, j, k+1, itu1) + rightd(itu1)
@@ -5951,7 +5911,7 @@ subroutine inviscidupwindflux_fast_b(finegrid)
                         rightd(ivx) = 0.0_8
                         wd(i, j, k+1, irho) = wd(i, j, k+1, irho) + rightd(irho)
                         rightd(irho) = 0.0_8
-                        branch = myIntStack(myIntPtr)
+                        branch = myintstackb(i,j,k,myIntPtr)
                         myIntPtr = myIntPtr - 1
                         if (branch .eq. 0) then
                             wd(i, j, k, itu1) = wd(i, j, k, itu1) + leftd(itu1)
@@ -5967,7 +5927,7 @@ subroutine inviscidupwindflux_fast_b(finegrid)
                         leftd(ivx) = 0.0_8
                         wd(i, j, k, irho) = wd(i, j, k, irho) + leftd(irho)
                         leftd(irho) = 0.0_8
-                        branch = myIntStack(myIntPtr)
+                        branch = myintstackb(i,j,k,myIntPtr)
                         myIntPtr = myIntPtr - 1
                         if (branch .eq. 0) call popreal8(sface)
                     end do
@@ -5990,7 +5950,7 @@ subroutine inviscidupwindflux_fast_b(finegrid)
                         por = porj(i, j, k)
                         call riemannflux_fast_b(left, leftd, right, rightd, flux, &
                         &                               fluxd)
-                        branch = myIntStack(myIntPtr)
+                        branch = myintstackb(i,j,k,myIntPtr)
                         myIntPtr = myIntPtr - 1
                         if (branch .eq. 0) then
                             wd(i, j+1, k, itu1) = wd(i, j+1, k, itu1) + rightd(itu1)
@@ -6006,7 +5966,7 @@ subroutine inviscidupwindflux_fast_b(finegrid)
                         rightd(ivx) = 0.0_8
                         wd(i, j+1, k, irho) = wd(i, j+1, k, irho) + rightd(irho)
                         rightd(irho) = 0.0_8
-                        branch = myIntStack(myIntPtr)
+                        branch = myintstackb(i,j,k,myIntPtr)
                         myIntPtr = myIntPtr - 1
                         if (branch .eq. 0) then
                             wd(i, j, k, itu1) = wd(i, j, k, itu1) + leftd(itu1)
@@ -6022,7 +5982,7 @@ subroutine inviscidupwindflux_fast_b(finegrid)
                         leftd(ivx) = 0.0_8
                         wd(i, j, k, irho) = wd(i, j, k, irho) + leftd(irho)
                         leftd(irho) = 0.0_8
-                        branch = myIntStack(myIntPtr)
+                        branch = myintstackb(i,j,k,myIntPtr)
                         myIntPtr = myIntPtr - 1
                         if (branch .eq. 0) call popreal8(sface)
                     end do
@@ -6045,7 +6005,7 @@ subroutine inviscidupwindflux_fast_b(finegrid)
                         por = pori(i, j, k)
                         call riemannflux_fast_b(left, leftd, right, rightd, flux, &
                         &                               fluxd)
-                        branch = myIntStack(myIntPtr)
+                        branch = myintstackb(i,j,k,myIntPtr)
                         myIntPtr = myIntPtr - 1
                         if (branch .eq. 0) then
                             wd(i+1, j, k, itu1) = wd(i+1, j, k, itu1) + rightd(itu1)
@@ -6061,7 +6021,7 @@ subroutine inviscidupwindflux_fast_b(finegrid)
                         rightd(ivx) = 0.0_8
                         wd(i+1, j, k, irho) = wd(i+1, j, k, irho) + rightd(irho)
                         rightd(irho) = 0.0_8
-                        branch = myIntStack(myIntPtr)
+                        branch = myintstackb(i,j,k,myIntPtr)
                         myIntPtr = myIntPtr - 1
                         if (branch .eq. 0) then
                             wd(i, j, k, itu1) = wd(i, j, k, itu1) + leftd(itu1)
@@ -6077,7 +6037,7 @@ subroutine inviscidupwindflux_fast_b(finegrid)
                         leftd(ivx) = 0.0_8
                         wd(i, j, k, irho) = wd(i, j, k, irho) + leftd(irho)
                         leftd(irho) = 0.0_8
-                        branch = myIntStack(myIntPtr)
+                        branch = myintstackb(i,j,k,myIntPtr)
                         myIntPtr = myIntPtr - 1
                         if (branch .eq. 0) call popreal8(sface)
                     end do
@@ -6117,15 +6077,14 @@ subroutine inviscidupwindflux_fast_b(finegrid)
                         du1(irhoe) = p(i, j, k) - p(i-1, j, k)
                         du2(irhoe) = p(i+1, j, k) - p(i, j, k)
                         du3(irhoe) = p(i+2, j, k) - p(i+1, j, k)
+                        myIntPtr = myIntPtr + 1
                         if (correctfork) then
                             du1(itu1) = w(i, j, k, itu1) - w(i-1, j, k, itu1)
                             du2(itu1) = w(i+1, j, k, itu1) - w(i, j, k, itu1)
                             du3(itu1) = w(i+2, j, k, itu1) - w(i+1, j, k, itu1)
-                            myIntPtr = myIntPtr + 1
-                            myIntStack(myIntPtr) = 0
+                            myintstackb(i,j,k,myIntPtr) = 0
                         else
-                            myIntPtr = myIntPtr + 1
-                            myIntStack(myIntPtr) = 1
+                            myintstackb(i,j,k,myIntPtr) = 1
                         end if
                         ! compute the differences from the first order scheme.
                         call leftrightstate(du1, du2, du3, rotmatrixi, left, right&
@@ -6143,27 +6102,25 @@ subroutine inviscidupwindflux_fast_b(finegrid)
                         right(ivy) = right(ivy) + w(i+1, j, k, ivy)
                         right(ivz) = right(ivz) + w(i+1, j, k, ivz)
                         right(irhoe) = right(irhoe) + p(i+1, j, k)
+                        myIntPtr = myIntPtr + 1
                         if (correctfork) then
                             left(itu1) = left(itu1) + w(i, j, k, itu1)
                             right(itu1) = right(itu1) + w(i+1, j, k, itu1)
-                            myIntPtr = myIntPtr + 1
-                            myIntStack(myIntPtr) = 0
+                            myintstackb(i,j,k,myIntPtr) = 0
                         else
-                            myIntPtr = myIntPtr + 1
-                            myIntStack(myIntPtr) = 1
+                            myintstackb(i,j,k,myIntPtr) = 1
                         end if
                         ! store the normal vector, the porosity and the
                         ! mesh velocity if present.
                         sx = si(i, j, k, 1)
                         sy = si(i, j, k, 2)
                         sz = si(i, j, k, 3)
+                        myIntPtr = myIntPtr + 1
                         if (addgridvelocities) then
                             sface = sfacei(i, j, k)
-                            myIntPtr = myIntPtr + 1
-                            myIntStack(myIntPtr) = 0
+                            myintstackb(i,j,k,myIntPtr) = 0
                         else
-                            myIntPtr = myIntPtr + 1
-                            myIntStack(myIntPtr) = 1
+                            myintstackb(i,j,k,myIntPtr) = 1
                         end if
                     end do
                 end do
@@ -6191,15 +6148,14 @@ subroutine inviscidupwindflux_fast_b(finegrid)
                         du1(irhoe) = p(i, j, k) - p(i, j-1, k)
                         du2(irhoe) = p(i, j+1, k) - p(i, j, k)
                         du3(irhoe) = p(i, j+2, k) - p(i, j+1, k)
+                        myIntPtr = myIntPtr + 1
                         if (correctfork) then
                             du1(itu1) = w(i, j, k, itu1) - w(i, j-1, k, itu1)
                             du2(itu1) = w(i, j+1, k, itu1) - w(i, j, k, itu1)
                             du3(itu1) = w(i, j+2, k, itu1) - w(i, j+1, k, itu1)
-                            myIntPtr = myIntPtr + 1
-                            myIntStack(myIntPtr) = 0
+                            myintstackb(i,j,k,myIntPtr) = 0
                         else
-                            myIntPtr = myIntPtr + 1
-                            myIntStack(myIntPtr) = 1
+                            myintstackb(i,j,k,myIntPtr) = 1
                         end if
                         ! compute the differences from the first order scheme.
                         call leftrightstate(du1, du2, du3, rotmatrixj, left, right&
@@ -6217,27 +6173,25 @@ subroutine inviscidupwindflux_fast_b(finegrid)
                         right(ivy) = right(ivy) + w(i, j+1, k, ivy)
                         right(ivz) = right(ivz) + w(i, j+1, k, ivz)
                         right(irhoe) = right(irhoe) + p(i, j+1, k)
+                        myIntPtr = myIntPtr + 1
                         if (correctfork) then
                             left(itu1) = left(itu1) + w(i, j, k, itu1)
                             right(itu1) = right(itu1) + w(i, j+1, k, itu1)
-                            myIntPtr = myIntPtr + 1
-                            myIntStack(myIntPtr) = 0
+                            myintstackb(i,j,k,myIntPtr) = 0
                         else
-                            myIntPtr = myIntPtr + 1
-                            myIntStack(myIntPtr) = 1
+                            myintstackb(i,j,k,myIntPtr) = 1
                         end if
                         ! store the normal vector, the porosity and the
                         ! mesh velocity if present.
                         sx = sj(i, j, k, 1)
                         sy = sj(i, j, k, 2)
                         sz = sj(i, j, k, 3)
+                        myIntPtr = myIntPtr + 1
                         if (addgridvelocities) then
                             sface = sfacej(i, j, k)
-                            myIntPtr = myIntPtr + 1
-                            myIntStack(myIntPtr) = 0
+                            myintstackb(i,j,k,myIntPtr) = 0
                         else
-                            myIntPtr = myIntPtr + 1
-                            myIntStack(myIntPtr) = 1
+                            myintstackb(i,j,k,myIntPtr) = 1
                         end if
                     end do
                 end do
@@ -6265,15 +6219,14 @@ subroutine inviscidupwindflux_fast_b(finegrid)
                         du1(irhoe) = p(i, j, k) - p(i, j, k-1)
                         du2(irhoe) = p(i, j, k+1) - p(i, j, k)
                         du3(irhoe) = p(i, j, k+2) - p(i, j, k+1)
+                        myIntPtr = myIntPtr + 1
                         if (correctfork) then
                             du1(itu1) = w(i, j, k, itu1) - w(i, j, k-1, itu1)
                             du2(itu1) = w(i, j, k+1, itu1) - w(i, j, k, itu1)
                             du3(itu1) = w(i, j, k+2, itu1) - w(i, j, k+1, itu1)
-                            myIntPtr = myIntPtr + 1
-                            myIntStack(myIntPtr) = 0
+                            myintstackb(i,j,k,myIntPtr) = 0
                         else
-                            myIntPtr = myIntPtr + 1
-                            myIntStack(myIntPtr) = 1
+                            myintstackb(i,j,k,myIntPtr) = 1
                         end if
                         ! compute the differences from the first order scheme.
                         call leftrightstate(du1, du2, du3, rotmatrixk, left, right&
@@ -6291,27 +6244,25 @@ subroutine inviscidupwindflux_fast_b(finegrid)
                         right(ivy) = right(ivy) + w(i, j, k+1, ivy)
                         right(ivz) = right(ivz) + w(i, j, k+1, ivz)
                         right(irhoe) = right(irhoe) + p(i, j, k+1)
+                        myIntPtr = myIntPtr + 1
                         if (correctfork) then
                             left(itu1) = left(itu1) + w(i, j, k, itu1)
                             right(itu1) = right(itu1) + w(i, j, k+1, itu1)
-                            myIntPtr = myIntPtr + 1
-                            myIntStack(myIntPtr) = 0
+                            myintstackb(i,j,k,myIntPtr) = 0
                         else
-                            myIntPtr = myIntPtr + 1
-                            myIntStack(myIntPtr) = 1
+                            myintstackb(i,j,k,myIntPtr) = 1
                         end if
                         ! store the normal vector, the porosity and the
                         ! mesh velocity if present.
                         sx = sk(i, j, k, 1)
                         sy = sk(i, j, k, 2)
                         sz = sk(i, j, k, 3)
+                        myIntPtr = myIntPtr + 1
                         if (addgridvelocities) then
                             sface = sfacek(i, j, k)
-                            myIntPtr = myIntPtr + 1
-                            myIntStack(myIntPtr) = 0
+                            myintstackb(i,j,k,myIntPtr) = 0
                         else
-                            myIntPtr = myIntPtr + 1
-                            myIntStack(myIntPtr) = 1
+                            myintstackb(i,j,k,myIntPtr) = 1
                         end if
                     end do
                 end do
@@ -6339,10 +6290,10 @@ subroutine inviscidupwindflux_fast_b(finegrid)
                         por = pork(i, j, k)
                         call riemannflux_fast_b(left, leftd, right, rightd, flux, &
                         &                               fluxd)
-                        branch = myIntStack(myIntPtr)
+                        branch = myintstackb(i,j,k,myIntPtr)
                         myIntPtr = myIntPtr - 1
                         if (branch .eq. 0) call popreal8(sface)
-                        branch = myIntStack(myIntPtr)
+                        branch = myintstackb(i,j,k,myIntPtr)
                         myIntPtr = myIntPtr - 1
                         if (branch .eq. 0) then
                             wd(i, j, k+1, itu1) = wd(i, j, k+1, itu1) + rightd(itu1)
@@ -6361,7 +6312,7 @@ subroutine inviscidupwindflux_fast_b(finegrid)
                         call leftrightstate_fast_b(du1, du1d, du2, du2d, du3, du3d&
                         &                                  , rotmatrixk, left, leftd, right, &
                         &                                  rightd)
-                        branch = myIntStack(myIntPtr)
+                        branch = myintstackb(i,j,k,myIntPtr)
                         myIntPtr = myIntPtr - 1
                         if (branch .eq. 0) then
                             wd(i, j, k+2, itu1) = wd(i, j, k+2, itu1) + du3d(itu1)
@@ -6439,10 +6390,10 @@ subroutine inviscidupwindflux_fast_b(finegrid)
                         por = porj(i, j, k)
                         call riemannflux_fast_b(left, leftd, right, rightd, flux, &
                         &                               fluxd)
-                        branch = myIntStack(myIntPtr)
+                        branch = myintstackb(i,j,k,myIntPtr)
                         myIntPtr = myIntPtr - 1
                         if (branch .eq. 0) call popreal8(sface)
-                        branch = myIntStack(myIntPtr)
+                        branch = myintstackb(i,j,k,myIntPtr)
                         myIntPtr = myIntPtr - 1
                         if (branch .eq. 0) then
                             wd(i, j+1, k, itu1) = wd(i, j+1, k, itu1) + rightd(itu1)
@@ -6461,7 +6412,7 @@ subroutine inviscidupwindflux_fast_b(finegrid)
                         call leftrightstate_fast_b(du1, du1d, du2, du2d, du3, du3d&
                         &                                  , rotmatrixj, left, leftd, right, &
                         &                                  rightd)
-                        branch = myIntStack(myIntPtr)
+                        branch = myintstackb(i,j,k,myIntPtr)
                         myIntPtr = myIntPtr - 1
                         if (branch .eq. 0) then
                             wd(i, j+2, k, itu1) = wd(i, j+2, k, itu1) + du3d(itu1)
@@ -6539,10 +6490,10 @@ subroutine inviscidupwindflux_fast_b(finegrid)
                         por = pori(i, j, k)
                         call riemannflux_fast_b(left, leftd, right, rightd, flux, &
                         &                               fluxd)
-                        branch = myIntStack(myIntPtr)
+                        branch = myintstackb(i,j,k,myIntPtr)
                         myIntPtr = myIntPtr - 1
                         if (branch .eq. 0) call popreal8(sface)
-                        branch = myIntStack(myIntPtr)
+                        branch = myintstackb(i,j,k,myIntPtr)
                         myIntPtr = myIntPtr - 1
                         if (branch .eq. 0) then
                             wd(i+1, j, k, itu1) = wd(i+1, j, k, itu1) + rightd(itu1)
@@ -6561,7 +6512,7 @@ subroutine inviscidupwindflux_fast_b(finegrid)
                         call leftrightstate_fast_b(du1, du1d, du2, du2d, du3, du3d&
                         &                                  , rotmatrixi, left, leftd, right, &
                         &                                  rightd)
-                        branch = myIntStack(myIntPtr)
+                        branch = myintstackb(i,j,k,myIntPtr)
                         myIntPtr = myIntPtr - 1
                         if (branch .eq. 0) then
                             wd(i+2, j, k, itu1) = wd(i+2, j, k, itu1) + du3d(itu1)
@@ -6724,6 +6675,7 @@ contains
         real(kind=realtype) :: temp4
         ! check if the velocity components should be transformed to
         ! the cylindrical frame.
+        myIntPtr = myIntPtr + 1
         if (rotationalperiodic) then
             ! store the rotation matrix a bit easier. note that the i,j,k
             ! come from the main subroutine.
@@ -6756,10 +6708,8 @@ contains
             du3(ivx) = rot(1, 1)*dvx + rot(1, 2)*dvy + rot(1, 3)*dvz
             du3(ivy) = rot(2, 1)*dvx + rot(2, 2)*dvy + rot(2, 3)*dvz
             du3(ivz) = rot(3, 1)*dvx + rot(3, 2)*dvy + rot(3, 3)*dvz
-            myIntPtr = myIntPtr + 1
             myIntStack(myIntPtr) = 0
         else
-            myIntPtr = myIntPtr + 1
             myIntStack(myIntPtr) = 1
         end if
         ! determine the limiter used.
@@ -6771,99 +6721,89 @@ contains
             ! nonlinear interpolation using the van albeda limiter.
             ! loop over the number of variables to be interpolated.
             do l=1,nwint
+                myIntPtr = myIntPtr + 1
                 if (du2(l) .ge. 0.) then
                     x1 = du2(l)
-                    myIntPtr = myIntPtr + 1
                     myIntStack(myIntPtr) = 0
                 else
                     x1 = -du2(l)
-                    myIntPtr = myIntPtr + 1
                     myIntStack(myIntPtr) = 1
                 end if
+                myIntPtr = myIntPtr + 1
                 if (x1 .lt. epslim) then
                     max2 = epslim
-                    myIntPtr = myIntPtr + 1
                     myIntStack(myIntPtr) = 0
                 else
                     max2 = x1
-                    myIntPtr = myIntPtr + 1
                     myIntStack(myIntPtr) = 1
                 end if
                 ! compute the limiter argument rl1, rl2, rr1 and rr2.
                 ! note the cut off to 0.0.
                 tmp = one/sign(max2, du2(l))
+                myIntPtr = myIntPtr + 1
                 if (du1(l) .ge. 0.) then
                     x3 = du1(l)
-                    myIntPtr = myIntPtr + 1
                     myIntStack(myIntPtr) = 0
                 else
                     x3 = -du1(l)
-                    myIntPtr = myIntPtr + 1
                     myIntStack(myIntPtr) = 1
                 end if
+                myIntPtr = myIntPtr + 1
                 if (x3 .lt. epslim) then
                     max4 = epslim
-                    myIntPtr = myIntPtr + 1
                     myIntStack(myIntPtr) = 0
                 else
                     max4 = x3
-                    myIntPtr = myIntPtr + 1
                     myIntStack(myIntPtr) = 1
                 end if
                 y1 = du2(l)/sign(max4, du1(l))
+                myIntPtr = myIntPtr + 1
                 if (zero .lt. y1) then
                     rl1 = y1
-                    myIntPtr = myIntPtr + 1
                     myIntStack(myIntPtr) = 0
                 else
                     rl1 = zero
-                    myIntPtr = myIntPtr + 1
                     myIntStack(myIntPtr) = 1
                 end if
+                myIntPtr = myIntPtr + 1
                 if (zero .lt. du1(l)*tmp) then
                     rl2 = du1(l)*tmp
-                    myIntPtr = myIntPtr + 1
                     myIntStack(myIntPtr) = 0
                 else
                     rl2 = zero
-                    myIntPtr = myIntPtr + 1
                     myIntStack(myIntPtr) = 1
                 end if
+                myIntPtr = myIntPtr + 1
                 if (zero .lt. du3(l)*tmp) then
                     rr1 = du3(l)*tmp
-                    myIntPtr = myIntPtr + 1
                     myIntStack(myIntPtr) = 0
                 else
                     rr1 = zero
-                    myIntPtr = myIntPtr + 1
                     myIntStack(myIntPtr) = 1
                 end if
+                myIntPtr = myIntPtr + 1
                 if (du3(l) .ge. 0.) then
                     x4 = du3(l)
-                    myIntPtr = myIntPtr + 1
                     myIntStack(myIntPtr) = 0
                 else
                     x4 = -du3(l)
-                    myIntPtr = myIntPtr + 1
                     myIntStack(myIntPtr) = 1
                 end if
+                myIntPtr = myIntPtr + 1
                 if (x4 .lt. epslim) then
                     max5 = epslim
-                    myIntPtr = myIntPtr + 1
                     myIntStack(myIntPtr) = 0
                 else
                     max5 = x4
-                    myIntPtr = myIntPtr + 1
                     myIntStack(myIntPtr) = 1
                 end if
                 y2 = du2(l)/sign(max5, du3(l))
+                myIntPtr = myIntPtr + 1
                 if (zero .lt. y2) then
                     rr2 = y2
-                    myIntPtr = myIntPtr + 1
                     myIntStack(myIntPtr) = 0
                 else
                     rr2 = zero
-                    myIntPtr = myIntPtr + 1
                     myIntStack(myIntPtr) = 1
                 end if
                 ! compute the corresponding limiter values.
@@ -6880,135 +6820,121 @@ contains
             ! nonlinear interpolation using the minmod limiter.
             ! loop over the number of variables to be interpolated.
             do l=1,nwint
+                myIntPtr = myIntPtr + 1
                 if (du2(l) .ge. 0.) then
                     x2 = du2(l)
-                    myIntPtr = myIntPtr + 1
                     myIntStack(myIntPtr) = 0
                 else
                     x2 = -du2(l)
-                    myIntPtr = myIntPtr + 1
                     myIntStack(myIntPtr) = 1
                 end if
+                myIntPtr = myIntPtr + 1
                 if (x2 .lt. epslim) then
                     max3 = epslim
-                    myIntPtr = myIntPtr + 1
                     myIntStack(myIntPtr) = 0
                 else
                     max3 = x2
-                    myIntPtr = myIntPtr + 1
                     myIntStack(myIntPtr) = 1
                 end if
                 ! compute the limiter argument rl1, rl2, rr1 and rr2.
                 ! note the cut off to 0.0.
                 tmp = one/sign(max3, du2(l))
+                myIntPtr = myIntPtr + 1
                 if (du1(l) .ge. 0.) then
                     x5 = du1(l)
-                    myIntPtr = myIntPtr + 1
                     myIntStack(myIntPtr) = 0
                 else
                     x5 = -du1(l)
-                    myIntPtr = myIntPtr + 1
                     myIntStack(myIntPtr) = 1
                 end if
+                myIntPtr = myIntPtr + 1
                 if (x5 .lt. epslim) then
                     max6 = epslim
-                    myIntPtr = myIntPtr + 1
                     myIntStack(myIntPtr) = 0
                 else
                     max6 = x5
-                    myIntPtr = myIntPtr + 1
                     myIntStack(myIntPtr) = 1
                 end if
                 y3 = du2(l)/sign(max6, du1(l))
+                myIntPtr = myIntPtr + 1
                 if (zero .lt. y3) then
                     rl1 = y3
-                    myIntPtr = myIntPtr + 1
                     myIntStack(myIntPtr) = 0
                 else
                     rl1 = zero
-                    myIntPtr = myIntPtr + 1
                     myIntStack(myIntPtr) = 1
                 end if
+                myIntPtr = myIntPtr + 1
                 if (zero .lt. du1(l)*tmp) then
                     rl2 = du1(l)*tmp
-                    myIntPtr = myIntPtr + 1
                     myIntStack(myIntPtr) = 0
                 else
                     rl2 = zero
-                    myIntPtr = myIntPtr + 1
                     myIntStack(myIntPtr) = 1
                 end if
+                myIntPtr = myIntPtr + 1
                 if (zero .lt. du3(l)*tmp) then
                     rr1 = du3(l)*tmp
-                    myIntPtr = myIntPtr + 1
                     myIntStack(myIntPtr) = 0
                 else
                     rr1 = zero
-                    myIntPtr = myIntPtr + 1
                     myIntStack(myIntPtr) = 1
                 end if
+                myIntPtr = myIntPtr + 1
                 if (du3(l) .ge. 0.) then
                     x6 = du3(l)
-                    myIntPtr = myIntPtr + 1
                     myIntStack(myIntPtr) = 0
                 else
                     x6 = -du3(l)
-                    myIntPtr = myIntPtr + 1
                     myIntStack(myIntPtr) = 1
                 end if
+                myIntPtr = myIntPtr + 1
                 if (x6 .lt. epslim) then
                     max7 = epslim
-                    myIntPtr = myIntPtr + 1
                     myIntStack(myIntPtr) = 0
                 else
                     max7 = x6
-                    myIntPtr = myIntPtr + 1
                     myIntStack(myIntPtr) = 1
                 end if
                 y4 = du2(l)/sign(max7, du3(l))
+                myIntPtr = myIntPtr + 1
                 if (zero .lt. y4) then
                     rr2 = y4
-                    myIntPtr = myIntPtr + 1
                     myIntStack(myIntPtr) = 0
                 else
                     rr2 = zero
-                    myIntPtr = myIntPtr + 1
                     myIntStack(myIntPtr) = 1
                 end if
+                myIntPtr = myIntPtr + 1
                 if (one .gt. factminmod*rl1) then
                     rl1 = factminmod*rl1
-                    myIntPtr = myIntPtr + 1
                     myIntStack(myIntPtr) = 0
                 else
                     rl1 = one
-                    myIntPtr = myIntPtr + 1
                     myIntStack(myIntPtr) = 1
                 end if
+                myIntPtr = myIntPtr + 1
                 if (one .gt. factminmod*rl2) then
                     rl2 = factminmod*rl2
-                    myIntPtr = myIntPtr + 1
                     myIntStack(myIntPtr) = 0
                 else
                     rl2 = one
-                    myIntPtr = myIntPtr + 1
                     myIntStack(myIntPtr) = 1
                 end if
+                myIntPtr = myIntPtr + 1
                 if (one .gt. factminmod*rr1) then
                     rr1 = factminmod*rr1
-                    myIntPtr = myIntPtr + 1
                     myIntStack(myIntPtr) = 0
                 else
                     rr1 = one
-                    myIntPtr = myIntPtr + 1
                     myIntStack(myIntPtr) = 1
                 end if
+                myIntPtr = myIntPtr + 1
                 if (one .gt. factminmod*rr2) then
                     rr2 = factminmod*rr2
-                    myIntPtr = myIntPtr + 1
                     myIntStack(myIntPtr) = 0
                 else
                     rr2 = one
-                    myIntPtr = myIntPtr + 1
                     myIntStack(myIntPtr) = 1
                 end if
             end do
@@ -7019,11 +6945,10 @@ contains
         ! in case only a first order scheme must be used for the
         ! turbulent transport equations, set the correction for the
         ! turbulent kinetic energy to 0.
+        myIntPtr = myIntPtr + 1
         if (firstorderk) then
-            myIntPtr = myIntPtr + 1
             myIntStack(myIntPtr) = 0
         else
-            myIntPtr = myIntPtr + 1
             myIntStack(myIntPtr) = 1
         end if
         ! for rotational periodic problems transform the velocity
@@ -7717,6 +7642,7 @@ contains
                 tmp = one/(z1l+z1r)
                 ! compute some variables depending whether or not a
                 ! k-equation is present.
+                myIntPtr = myIntPtr + 1
                 if (correctfork) then
                     ! store the left and right kinetic energy in ktmp,
                     ! which is needed to compute the total energy.
@@ -7728,10 +7654,8 @@ contains
                     ! compute the average turbulent energy per unit mass
                     ! using roe averages.
                     kavg = tmp*(z1l*left(itu1)+z1r*right(itu1))
-                    myIntPtr = myIntPtr + 1
                     myIntStack(myIntPtr) = 1
                 else
-                    myIntPtr = myIntPtr + 1
                     myIntStack(myIntPtr) = 0
                     ! set the difference of the turbulent kinetic energy
                     ! per unit volume and the averaged kinetic energy per
@@ -7773,13 +7697,12 @@ contains
                 ! compute some dependent variables at the roe
                 ! average state.
                 alphaavg = half*(uavg**2+vavg**2+wavg**2)
+                myIntPtr = myIntPtr + 1
                 if (gm1*(havg-alphaavg) - gm53*kavg .ge. 0.) then
                     a2avg = gm1*(havg-alphaavg) - gm53*kavg
-                    myIntPtr = myIntPtr + 1
                     myIntStack(myIntPtr) = 0
                 else
                     a2avg = -(gm1*(havg-alphaavg)-gm53*kavg)
-                    myIntPtr = myIntPtr + 1
                     myIntStack(myIntPtr) = 1
                 end if
                 aavg = sqrt(a2avg)
@@ -7788,34 +7711,31 @@ contains
                 ova2avg = one/a2avg
                 ! set for a boundary the normal velocity to rface, the
                 ! normal velocity of the boundary.
+                myIntPtr = myIntPtr + 1
                 if (por .eq. boundflux) then
                     unavg = rface
-                    myIntPtr = myIntPtr + 1
                     myIntStack(myIntPtr) = 1
                 else
-                    myIntPtr = myIntPtr + 1
                     myIntStack(myIntPtr) = 0
                 end if
                 x1 = (left(ivx)-right(ivx))*sx + (left(ivy)-right(ivy))*sy + (&
                 &           left(ivz)-right(ivz))*sz
+                myIntPtr = myIntPtr + 1
                 if (x1 .ge. 0.) then
                     abs1 = x1
-                    myIntPtr = myIntPtr + 1
                     myIntStack(myIntPtr) = 1
                 else
                     abs1 = -x1
-                    myIntPtr = myIntPtr + 1
                     myIntStack(myIntPtr) = 0
                 end if
                 x2 = sqrt(gammaface*left(irhoe)/left(irho)) - sqrt(gammaface*&
                 &           right(irhoe)/right(irho))
+                myIntPtr = myIntPtr + 1
                 if (x2 .ge. 0.) then
                     abs2 = x2
-                    myIntPtr = myIntPtr + 1
                     myIntStack(myIntPtr) = 0
                 else
                     abs2 = -x2
-                    myIntPtr = myIntPtr + 1
                     myIntStack(myIntPtr) = 1
                 end if
                 ! compute the coefficient eta for the entropy correction.
@@ -7829,57 +7749,51 @@ contains
                 ! all the left and right states, which is rather
                 ! expensive in terms of memory.
                 eta = half*(abs1+abs2)
+                myIntPtr = myIntPtr + 1
                 if (unavg - rface + aavg .ge. 0.) then
                     lam1 = unavg - rface + aavg
-                    myIntPtr = myIntPtr + 1
                     myIntStack(myIntPtr) = 0
                 else
                     lam1 = -(unavg-rface+aavg)
-                    myIntPtr = myIntPtr + 1
                     myIntStack(myIntPtr) = 1
                 end if
+                myIntPtr = myIntPtr + 1
                 if (unavg - rface - aavg .ge. 0.) then
                     lam2 = unavg - rface - aavg
-                    myIntPtr = myIntPtr + 1
                     myIntStack(myIntPtr) = 0
                 else
                     lam2 = -(unavg-rface-aavg)
-                    myIntPtr = myIntPtr + 1
                     myIntStack(myIntPtr) = 1
                 end if
+                myIntPtr = myIntPtr + 1
                 if (unavg - rface .ge. 0.) then
                     lam3 = unavg - rface
-                    myIntPtr = myIntPtr + 1
                     myIntStack(myIntPtr) = 0
                 else
                     lam3 = -(unavg-rface)
-                    myIntPtr = myIntPtr + 1
                     myIntStack(myIntPtr) = 1
                 end if
                 ! apply the entropy correction to the eigenvalues.
                 tmp = two*eta
+                myIntPtr = myIntPtr + 1
                 if (lam1 .lt. tmp) then
                     lam1 = eta + fourth*lam1*lam1/eta
-                    myIntPtr = myIntPtr + 1
                     myIntStack(myIntPtr) = 0
                 else
-                    myIntPtr = myIntPtr + 1
                     myIntStack(myIntPtr) = 1
                 end if
+                myIntPtr = myIntPtr + 1
                 if (lam2 .lt. tmp) then
                     lam2 = eta + fourth*lam2*lam2/eta
-                    myIntPtr = myIntPtr + 1
                     myIntStack(myIntPtr) = 0
                 else
-                    myIntPtr = myIntPtr + 1
                     myIntStack(myIntPtr) = 1
                 end if
+                myIntPtr = myIntPtr + 1
                 if (lam3 .lt. tmp) then
                     lam3 = eta + fourth*lam3*lam3/eta
-                    myIntPtr = myIntPtr + 1
                     myIntStack(myIntPtr) = 0
                 else
-                    myIntPtr = myIntPtr + 1
                     myIntStack(myIntPtr) = 1
                 end if
                 ! multiply the eigenvalues by the area to obtain
@@ -8428,15 +8342,14 @@ subroutine inviscidcentralflux_fast_b()
         porvel = one
         porflux = half
         if (pork(i, j, k) .eq. noflux) porflux = zero
+        myIntPtr = myIntPtr + 1
         if (pork(i, j, k) .eq. boundflux) then
             porvel = zero
             vnp = sface
             vnm = sface
-            myIntPtr = myIntPtr + 1
-            myIntStack(myIntPtr) = 0
+            myintstackb(i,j,k,myIntPtr) = 0
         else
-            myIntPtr = myIntPtr + 1
-            myIntStack(myIntPtr) = 1
+            myintstackb(i,j,k,myIntPtr) = 1
         end if
         ! incorporate porflux in porvel.
         porvel = porvel*porflux
@@ -8489,7 +8402,7 @@ subroutine inviscidcentralflux_fast_b()
         qspd = qspd + w(i, j, k+1, irho)*rqspd
         vnpd = porvel*qspd + p(i, j, k+1)*tempd1
         wd(i, j, k+1, irho) = wd(i, j, k+1, irho) + qsp*rqspd
-        branch = myIntStack(myIntPtr)
+        branch = myintstackb(i,j,k,myIntPtr)
         myIntPtr = myIntPtr - 1
         if (branch .eq. 0) then
             vnmd = 0.0_8
@@ -8532,15 +8445,14 @@ subroutine inviscidcentralflux_fast_b()
         porvel = one
         porflux = half
         if (porj(i, j, k) .eq. noflux) porflux = zero
+        myIntPtr = myIntPtr + 1
         if (porj(i, j, k) .eq. boundflux) then
             porvel = zero
             vnp = sface
             vnm = sface
-            myIntPtr = myIntPtr + 1
-            myIntStack(myIntPtr) = 0
+            myintstackb(i,j,k,myIntPtr) = 0
         else
-            myIntPtr = myIntPtr + 1
-            myIntStack(myIntPtr) = 1
+            myintstackb(i,j,k,myIntPtr) = 1
         end if
         ! incorporate porflux in porvel.
         porvel = porvel*porflux
@@ -8593,7 +8505,7 @@ subroutine inviscidcentralflux_fast_b()
         qspd = qspd + w(i, j+1, k, irho)*rqspd
         vnpd = porvel*qspd + p(i, j+1, k)*tempd0
         wd(i, j+1, k, irho) = wd(i, j+1, k, irho) + qsp*rqspd
-        branch = myIntStack(myIntPtr)
+        branch = myintstackb(i,j,k,myIntPtr)
         myIntPtr = myIntPtr - 1
         if (branch .eq. 0) then
             vnmd = 0.0_8
@@ -8638,15 +8550,14 @@ subroutine inviscidcentralflux_fast_b()
         porvel = one
         porflux = half
         if (pori(i, j, k) .eq. noflux) porflux = zero
+        myIntPtr = myIntPtr + 1
         if (pori(i, j, k) .eq. boundflux) then
             porvel = zero
             vnp = sface
             vnm = sface
-            myIntPtr = myIntPtr + 1
-            myIntStack(myIntPtr) = 0
+            myintstackb(i,j,k,myIntPtr) = 0
         else
-            myIntPtr = myIntPtr + 1
-            myIntStack(myIntPtr) = 1
+            myintstackb(i,j,k,myIntPtr) = 1
         end if
         ! incorporate porflux in porvel.
         porvel = porvel*porflux
@@ -8699,7 +8610,7 @@ subroutine inviscidcentralflux_fast_b()
         qspd = qspd + w(i+1, j, k, irho)*rqspd
         vnpd = porvel*qspd + p(i+1, j, k)*tempd
         wd(i+1, j, k, irho) = wd(i+1, j, k, irho) + qsp*rqspd
-        branch = myIntStack(myIntPtr)
+        branch = myintstackb(i,j,k,myIntPtr)
         myIntPtr = myIntPtr - 1
         if (branch .eq. 0) then
             vnmd = 0.0_8
@@ -8857,23 +8768,21 @@ subroutine saviscous_fast_b()
         nup = half*(rlv(i+1, j, k)/w(i+1, j, k, irho)+nu)
         cdm = (num+(one+rsacb2)*nutm)*ttm*cb3inv
         cdp = (nup+(one+rsacb2)*nutp)*ttp*cb3inv
+        myIntPtr = myIntPtr + 1
         if (cdm + cam .lt. zero) then
             c1m = zero
-            myIntPtr = myIntPtr + 1
-            myIntStack(myIntPtr) = 0
+            myintstackb(i,j,k,myIntPtr) = 0
         else
             c1m = cdm + cam
-            myIntPtr = myIntPtr + 1
-            myIntStack(myIntPtr) = 1
+            myintstackb(i,j,k,myIntPtr) = 1
         end if
+        myIntPtr = myIntPtr + 1
         if (cdp + cap .lt. zero) then
             c1p = zero
-            myIntPtr = myIntPtr + 1
-            myIntStack(myIntPtr) = 0
+            myintstackb(i,j,k,myIntPtr) = 0
         else
             c1p = cdp + cap
-            myIntPtr = myIntPtr + 1
-            myIntStack(myIntPtr) = 1
+            myintstackb(i,j,k,myIntPtr) = 1
         end if
         c10 = c1m + c1p
         ! update the residual for this cell and store the possible
@@ -8889,7 +8798,7 @@ subroutine saviscous_fast_b()
         &       )
         c1md = c1md + c10d
         c1pd = c1pd + c10d
-        branch = myIntStack(myIntPtr)
+        branch = myintstackb(i,j,k,myIntPtr)
         myIntPtr = myIntPtr - 1
         if (branch .eq. 0) then
             cdpd = 0.0_8
@@ -8898,7 +8807,7 @@ subroutine saviscous_fast_b()
             cdpd = c1pd
             capd = c1pd
         end if
-        branch = myIntStack(myIntPtr)
+        branch = myintstackb(i,j,k,myIntPtr)
         myIntPtr = myIntPtr - 1
         if (branch .eq. 0) then
             cdmd = 0.0_8
@@ -8981,23 +8890,21 @@ subroutine saviscous_fast_b()
         nup = half*(rlv(i, j+1, k)/w(i, j+1, k, irho)+nu)
         cdm = (num+(one+rsacb2)*nutm)*ttm*cb3inv
         cdp = (nup+(one+rsacb2)*nutp)*ttp*cb3inv
+        myIntPtr = myIntPtr + 1
         if (cdm + cam .lt. zero) then
             c1m = zero
-            myIntPtr = myIntPtr + 1
-            myIntStack(myIntPtr) = 0
+            myintstackb(i,j,k,myIntPtr) = 0
         else
             c1m = cdm + cam
-            myIntPtr = myIntPtr + 1
-            myIntStack(myIntPtr) = 1
+            myintstackb(i,j,k,myIntPtr) = 1
         end if
+        myIntPtr = myIntPtr + 1
         if (cdp + cap .lt. zero) then
             c1p = zero
-            myIntPtr = myIntPtr + 1
-            myIntStack(myIntPtr) = 0
+            myintstackb(i,j,k,myIntPtr) = 0
         else
             c1p = cdp + cap
-            myIntPtr = myIntPtr + 1
-            myIntStack(myIntPtr) = 1
+            myintstackb(i,j,k,myIntPtr) = 1
         end if
         c10 = c1m + c1p
         ! update the residual for this cell and store the possible
@@ -9013,7 +8920,7 @@ subroutine saviscous_fast_b()
         &       )
         c1md = c1md + c10d
         c1pd = c1pd + c10d
-        branch = myIntStack(myIntPtr)
+        branch = myintstackb(i,j,k,myIntPtr)
         myIntPtr = myIntPtr - 1
         if (branch .eq. 0) then
             cdpd = 0.0_8
@@ -9022,7 +8929,7 @@ subroutine saviscous_fast_b()
             cdpd = c1pd
             capd = c1pd
         end if
-        branch = myIntStack(myIntPtr)
+        branch = myintstackb(i,j,k,myIntPtr)
         myIntPtr = myIntPtr - 1
         if (branch .eq. 0) then
             cdmd = 0.0_8
@@ -9108,23 +9015,21 @@ subroutine saviscous_fast_b()
         nup = half*(rlv(i, j, k+1)/w(i, j, k+1, irho)+nu)
         cdm = (num+(one+rsacb2)*nutm)*ttm*cb3inv
         cdp = (nup+(one+rsacb2)*nutp)*ttp*cb3inv
+        myIntPtr = myIntPtr + 1
         if (cdm + cam .lt. zero) then
             c1m = zero
-            myIntPtr = myIntPtr + 1
-            myIntStack(myIntPtr) = 0
+            myintstackb(i,j,k,myIntPtr) = 0
         else
             c1m = cdm + cam
-            myIntPtr = myIntPtr + 1
-            myIntStack(myIntPtr) = 1
+            myintstackb(i,j,k,myIntPtr) = 1
         end if
+        myIntPtr = myIntPtr + 1
         if (cdp + cap .lt. zero) then
             c1p = zero
-            myIntPtr = myIntPtr + 1
-            myIntStack(myIntPtr) = 0
+            myintstackb(i,j,k,myIntPtr) = 0
         else
             c1p = cdp + cap
-            myIntPtr = myIntPtr + 1
-            myIntStack(myIntPtr) = 1
+            myintstackb(i,j,k,myIntPtr) = 1
         end if
         c10 = c1m + c1p
         ! update the residual for this cell and store the possible
@@ -9140,7 +9045,7 @@ subroutine saviscous_fast_b()
         &       )
         c1md = c1md + c10d
         c1pd = c1pd + c10d
-        branch = myIntStack(myIntPtr)
+        branch = myintstackb(i,j,k,myIntPtr)
         myIntPtr = myIntPtr - 1
         if (branch .eq. 0) then
             cdpd = 0.0_8
@@ -9149,7 +9054,7 @@ subroutine saviscous_fast_b()
             cdpd = c1pd
             capd = c1pd
         end if
-        branch = myIntStack(myIntPtr)
+        branch = myintstackb(i,j,k,myIntPtr)
         myIntPtr = myIntPtr - 1
         if (branch .eq. 0) then
             cdmd = 0.0_8
@@ -10144,14 +10049,13 @@ subroutine sasource_fast_b()
             ! the function ft2, which is designed to keep a laminar
             ! solution laminar. when running in fully turbulent mode
             ! this function should be set to 0.0.
+            myIntPtr = myIntPtr + 1
             if (useft2sa) then
                 ft2 = rsact3*exp(-(rsact4*chi2))
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 0
+                myintstackb(i,j,k,myIntPtr) = 0
             else
                 ft2 = zero
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 1
+                myintstackb(i,j,k,myIntPtr) = 1
             end if
             ! correct the production term to account for the influence
             ! of the wall.
@@ -10159,42 +10063,39 @@ subroutine sasource_fast_b()
             ! add rotation term (userotationsa defined in inputparams.f90)
             if (userotationsa) then
                 y1 = sqrt(two*strainmag2)
+                myIntPtr = myIntPtr + 1
                 if (zero .gt. y1) then
                     min1 = y1
-                    myIntPtr = myIntPtr + 1
-                    myIntStack(myIntPtr) = 0
+                    myintstackb(i,j,k,myIntPtr) = 0
                 else
                     min1 = zero
-                    myIntPtr = myIntPtr + 1
-                    myIntStack(myIntPtr) = 1
+                    myintstackb(i,j,k,myIntPtr) = 1
                 end if
                 sst = sst + rsacrot*min1
                 myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 1
+                myintstackb(i,j,k,myIntPtr) = 1
             else
                 myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 0
+                myintstackb(i,j,k,myIntPtr) = 0
             end if
+            myIntPtr = myIntPtr + 1
             if (sst .lt. xminn) then
                 sst = xminn
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 0
+                myintstackb(i,j,k,myIntPtr) = 0
             else
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 1
+                myintstackb(i,j,k,myIntPtr) = 1
                 sst = sst
             end if
             ! compute the function fw. the argument rr is cut off at 10
             ! to avoid numerical problems. this is ok, because the
             ! asymptotical value of fw is then already reached.
             rr = w(i, j, k, itu1)*kar2inv*dist2inv/sst
+            myIntPtr = myIntPtr + 1
             if (rr .gt. 10.0_realtype) then
                 rr = 10.0_realtype
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 0
+                myintstackb(i,j,k,myIntPtr) = 0
             else
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 1
+                myintstackb(i,j,k,myIntPtr) = 1
                 rr = rr
             end if
             gg = rr + rsacw2*(rr**6-rr)
@@ -10203,14 +10104,13 @@ subroutine sasource_fast_b()
             fwsa = gg*termfw
             ! compute the source term; some terms are saved for the
             ! linearization. the source term is stored in dvt.
+            myIntPtr = myIntPtr + 1
             if (approxsa) then
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 0
+                myintstackb(i,j,k,myIntPtr) = 0
                 term1 = zero
             else
                 term1 = rsacb1*(one-ft2)*ss
-                myIntPtr = myIntPtr + 1
-                myIntStack(myIntPtr) = 1
+                myintstackb(i,j,k,myIntPtr) = 1
             end if
             term2 = dist2inv*(kar2inv*rsacb1*((one-ft2)*fv2+ft2)-rsacw1*fwsa&
             &         )
@@ -10225,7 +10125,7 @@ subroutine sasource_fast_b()
             ft2d = (1.0_8-fv2)*tempd10
             fv2d = (one-ft2)*tempd10
             fwsad = -(dist2inv*rsacw1*term2d)
-            branch = myIntStack(myIntPtr)
+            branch = myintstackb(i,j,k,myIntPtr)
             myIntPtr = myIntPtr - 1
             if (branch .ne. 0) then
                 ft2d = ft2d - ss*rsacb1*term1d
@@ -10241,20 +10141,20 @@ subroutine sasource_fast_b()
         end if
         ggd = 6*gg**5*gg6d + termfw*fwsad
         rrd = (rsacw2*6*rr**5-rsacw2+1.0_8)*ggd
-        branch = myIntStack(myIntPtr)
+        branch = myintstackb(i,j,k,myIntPtr)
         myIntPtr = myIntPtr - 1
         if (branch .eq. 0) rrd = 0.0_8
         tempd8 = kar2inv*dist2inv*rrd/sst
         wd(i, j, k, itu1) = wd(i, j, k, itu1) + tempd8
         sstd = -(w(i, j, k, itu1)*tempd8/sst)
-        branch = myIntStack(myIntPtr)
+        branch = myintstackb(i,j,k,myIntPtr)
         myIntPtr = myIntPtr - 1
         if (branch .eq. 0) sstd = 0.0_8
-        branch = myIntStack(myIntPtr)
+        branch = myintstackb(i,j,k,myIntPtr)
         myIntPtr = myIntPtr - 1
         if (branch .ne. 0) then
             min1d = rsacrot*sstd
-            branch = myIntStack(myIntPtr)
+            branch = myintstackb(i,j,k,myIntPtr)
             myIntPtr = myIntPtr - 1
             if (branch .eq. 0) then
                 y1d = min1d
@@ -10268,7 +10168,7 @@ subroutine sasource_fast_b()
         ssd = ssd + sstd
         wd(i, j, k, itu1) = wd(i, j, k, itu1) + fv2*tempd7
         fv2d = fv2d + w(i, j, k, itu1)*tempd7
-        branch = myIntStack(myIntPtr)
+        branch = myintstackb(i,j,k,myIntPtr)
         myIntPtr = myIntPtr - 1
         if (branch .eq. 0) then
             chi2d = -(exp(-(rsact4*chi2))*rsact3*rsact4*ft2d)
@@ -10513,13 +10413,12 @@ end subroutine sasource_fast_b
           uuy = w(i, j, k, ivy)
           uuz = w(i, j, k, ivz)
           cc2 = gamma(i, j, k)*p(i, j, k)/w(i, j, k, irho)
+          myIntPtr = myIntPtr + 1
           if (cc2 .lt. clim2) then
             cc2 = clim2
-myIntPtr = myIntPtr + 1
- myIntStack(myIntPtr) = 0
+            myintstackb(i,j,k,myIntPtr) = 0
           else
-myIntPtr = myIntPtr + 1
- myIntStack(myIntPtr) = 1
+            myintstackb(i,j,k,myIntPtr) = 1
             cc2 = cc2
           end if
 ! set the dot product of the grid velocity and the
@@ -10533,14 +10432,13 @@ myIntPtr = myIntPtr + 1
           sy = si(i-1, j, k, 2) + si(i, j, k, 2)
           sz = si(i-1, j, k, 3) + si(i, j, k, 3)
           qsi = uux*sx + uuy*sy + uuz*sz - sface
+          myIntPtr = myIntPtr + 1
           if (qsi .ge. 0.) then
             abs0 = qsi
-myIntPtr = myIntPtr + 1
- myIntStack(myIntPtr) = 0
+            myintstackb(i,j,k,myIntPtr) = 0
           else
             abs0 = -qsi
-myIntPtr = myIntPtr + 1
- myIntStack(myIntPtr) = 1
+            myintstackb(i,j,k,myIntPtr) = 1
           end if
           ri = half*(abs0+sqrt(cc2*(sx**2+sy**2+sz**2)))
 ! the grid velocity in j-direction.
@@ -10551,14 +10449,13 @@ myIntPtr = myIntPtr + 1
           sy = sj(i, j-1, k, 2) + sj(i, j, k, 2)
           sz = sj(i, j-1, k, 3) + sj(i, j, k, 3)
           qsj = uux*sx + uuy*sy + uuz*sz - sface
+          myIntPtr = myIntPtr + 1
           if (qsj .ge. 0.) then
             abs1 = qsj
-myIntPtr = myIntPtr + 1
- myIntStack(myIntPtr) = 0
+            myintstackb(i,j,k,myIntPtr) = 0
           else
             abs1 = -qsj
-myIntPtr = myIntPtr + 1
- myIntStack(myIntPtr) = 1
+            myintstackb(i,j,k,myIntPtr) = 1
           end if
           rj = half*(abs1+sqrt(cc2*(sx**2+sy**2+sz**2)))
 ! the grid velocity in k-direction.
@@ -10569,14 +10466,13 @@ myIntPtr = myIntPtr + 1
           sy = sk(i, j, k-1, 2) + sk(i, j, k, 2)
           sz = sk(i, j, k-1, 3) + sk(i, j, k, 3)
           qsk = uux*sx + uuy*sy + uuz*sz - sface
+          myIntPtr = myIntPtr + 1
           if (qsk .ge. 0.) then
             abs2 = qsk
-myIntPtr = myIntPtr + 1
- myIntStack(myIntPtr) = 0
+            myintstackb(i,j,k,myIntPtr) = 0
           else
             abs2 = -qsk
-myIntPtr = myIntPtr + 1
- myIntStack(myIntPtr) = 1
+            myintstackb(i,j,k,myIntPtr) = 1
           end if
           rk = half*(abs2+sqrt(cc2*(sx**2+sy**2+sz**2)))
 ! compute the inviscid contribution to the time step.
@@ -10585,31 +10481,28 @@ myIntPtr = myIntPtr + 1
 !           applied.
 !
           if (doscaling) then
+            myIntPtr = myIntPtr + 1
             if (ri .lt. eps) then
               ri = eps
-myIntPtr = myIntPtr + 1
- myIntStack(myIntPtr) = 0
+              myintstackb(i,j,k,myIntPtr) = 0
             else
-myIntPtr = myIntPtr + 1
- myIntStack(myIntPtr) = 1
+              myintstackb(i,j,k,myIntPtr) = 1
               ri = ri
             end if
+            myIntPtr = myIntPtr + 1
             if (rj .lt. eps) then
               rj = eps
-myIntPtr = myIntPtr + 1
- myIntStack(myIntPtr) = 0
+              myintstackb(i,j,k,myIntPtr) = 0
             else
-myIntPtr = myIntPtr + 1
- myIntStack(myIntPtr) = 1
+              myintstackb(i,j,k,myIntPtr) = 1
               rj = rj
             end if
+            myIntPtr = myIntPtr + 1
             if (rk .lt. eps) then
               rk = eps
-myIntPtr = myIntPtr + 1
- myIntStack(myIntPtr) = 0
+              myintstackb(i,j,k,myIntPtr) = 0
             else
-myIntPtr = myIntPtr + 1
- myIntStack(myIntPtr) = 1
+              myintstackb(i,j,k,myIntPtr) = 1
               rk = rk
             end if
 ! compute the scaling in the three coordinate
@@ -10654,13 +10547,13 @@ myIntPtr = myIntPtr + 1
 &             k)
             radid(i, j, k) = 0.0_8
             rjd = rjd + tempd2 - ri*tempd1/rj
-branch = myIntStack(myIntPtr)
+branch = myintstackb(i,j,k,myIntPtr)
  myIntPtr = myIntPtr - 1
             if (branch .eq. 0) rkd = 0.0_8
-branch = myIntStack(myIntPtr)
+branch = myintstackb(i,j,k,myIntPtr)
  myIntPtr = myIntPtr - 1
             if (branch .eq. 0) rjd = 0.0_8
-branch = myIntStack(myIntPtr)
+branch = myintstackb(i,j,k,myIntPtr)
  myIntPtr = myIntPtr - 1
             if (branch .eq. 0) rid = 0.0_8
           else
@@ -10678,7 +10571,7 @@ branch = myIntStack(myIntPtr)
           else
             cc2d = half*temp2*rkd/(2.0*sqrt(temp2*cc2))
           end if
-branch = myIntStack(myIntPtr)
+branch = myintstackb(i,j,k,myIntPtr)
  myIntPtr = myIntPtr - 1
           if (branch .eq. 0) then
             qskd = abs2d
@@ -10695,7 +10588,7 @@ branch = myIntStack(myIntPtr)
           abs1d = half*rjd
           if (.not.temp1*cc2 .eq. 0.0_8) cc2d = cc2d + half*temp1*rjd/(&
 &             2.0*sqrt(temp1*cc2))
-branch = myIntStack(myIntPtr)
+branch = myintstackb(i,j,k,myIntPtr)
  myIntPtr = myIntPtr - 1
           if (branch .eq. 0) then
             qsjd = abs1d
@@ -10712,7 +10605,7 @@ branch = myIntStack(myIntPtr)
           abs0d = half*rid
           if (.not.temp0*cc2 .eq. 0.0_8) cc2d = cc2d + half*temp0*rid/(&
 &             2.0*sqrt(temp0*cc2))
-branch = myIntStack(myIntPtr)
+branch = myintstackb(i,j,k,myIntPtr)
  myIntPtr = myIntPtr - 1
           if (branch .eq. 0) then
             qsid = abs0d
@@ -10722,7 +10615,7 @@ branch = myIntStack(myIntPtr)
           uuxd = uuxd + sx*qsid
           uuyd = uuyd + sy*qsid
           uuzd = uuzd + sz*qsid
-branch = myIntStack(myIntPtr)
+branch = myintstackb(i,j,k,myIntPtr)
  myIntPtr = myIntPtr - 1
           if (branch .eq. 0) cc2d = 0.0_8
           temp = w(i, j, k, irho)
