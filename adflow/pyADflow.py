@@ -4449,6 +4449,21 @@ class ADFLOW(AeroSolver):
 
         return res
 
+    def getResidualRTwo(self, aeroProblem, resrtwo=None, releaseAdjointMemory=True):
+        """Return the residual on this processor. Used in aerostructural
+        analysis"""
+        self.setAeroProblem(aeroProblem, releaseAdjointMemory)
+        if resrtwo is None:
+            resrtwo = numpy.zeros(self.getStateSize())
+        resrtwo = self.adflow.nksolver.getresrtwo(resrtwo)
+
+        return resrtwo
+
+    def solveAdaptIndc(self, aeroProblem,releaseAdjointMemory=True, objective):
+        self.setAeroProblem(aeroProblem, releaseAdjointMemory)
+        resR2 = self.getResidualRTwo(aeroProblem)
+        psi = self.getAdjoint(objective)
+        self.adflow.adjointapi.solveadaptind(resR2,psi)
     def getFreeStreamResidual(self, aeroProblem):
         self.setAeroProblem(aeroProblem)
         rhoRes, totalRRes = self.adflow.nksolver.getfreestreamresidual()
@@ -4910,7 +4925,7 @@ class ADFLOW(AeroSolver):
         )
 
     def _getOptionMap(self):
-        """ The ADflow option map and module mapping"""
+        """The ADflow option map and module mapping"""
 
         moduleMap = {
             "io": self.adflow.inputio,

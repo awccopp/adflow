@@ -223,6 +223,11 @@ python module libadflow
            integer(kind=inttype) optional,intent(in),check(len(res)>=ndimw),depend(res) :: ndimw=len(res)
          end subroutine getres
 
+         subroutine getresrtwo(res,ndimw)
+           real(kind=realtype) dimension(ndimw),intent(in,out) :: res
+           integer(kind=inttype) optional,intent(in),check(len(res)>=ndimw),depend(res) :: ndimw=len(res)
+         end subroutine getresrtwo
+
          subroutine applypc(in_vec,out_vec,ndof)
            real(kind=realtype) dimension(ndof),intent(in) :: in_vec
            real(kind=realtype) dimension(ndof),intent(in, out),depend(ndof) :: out_vec
