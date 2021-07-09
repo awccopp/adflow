@@ -1270,4 +1270,37 @@ contains
     adjointPETScVarsAllocated = .True.
   end subroutine createPETScVars
 
+  subroutine computeAdaptIndicators(error, psi,res,indic, ndimw, ncells)
+      use constants
+      use flowvarrefstate, only : nw
+
+      implicit none
+      real(kind=realType),dimension(ncells),intent(inout):: error(ncells)
+      integer(kind=intType),intent(in):: ndimw
+      integer(kind=intType),intent(in):: ncells
+      real(kind=realType),dimension(ndimw),intent(in) :: res(ndimw)
+      real(kind=realType),dimension(ndimw),intent(in) :: psi(ndimw)
+      real(kind=realType),dimension(ncells),intent(inout) :: indic(ncells)
+      !local variables 
+      integer(kind=intType) :: counter, i, j 
+      real(kind=realType) sum
+      real(kind=realType) tmp 
+ 
+      counter = 1
+      !loop over cells
+      do  i = 1, ncells 
+         sum = 0
+         !loop over states
+         do j = 1, nw 
+            tmp = psi(counter)*res(counter)
+            sum = sum + tmp
+            counter = counter + one
+         end do 
+         error(i) = sum
+         IF (sum .LT. zero) THEN
+            sum = -one*sum
+         END IF 
+         indic(i) = sum
+      end do
+   end subroutine computeAdaptIndicators
 end module adjointAPI

@@ -620,7 +620,7 @@ python module libadflow
            real(kind=realtype) dimension(nstate) :: rhs
            character*(*) intent(in) :: filename
            integer(kind=inttype), optional,check(len(rhs)>=nstate),depend(rhs) :: nstate=len(rhs)
-         end subroutine solveadjoint
+         end subroutine saveadjointrhs
 
 
          subroutine savecellcenters(filename)
@@ -677,6 +677,15 @@ python module libadflow
                 logical intent(in) :: bcvarsempty
             end subroutine computematrixfreeproductbwd
 #endif
+       subroutine computeadaptindicators(error, psi,res,indic, ndimw, ncells)
+           real(kind=realtype) dimension(ncells):: error
+           real(kind=realtype) dimension(ndimw) :: psi
+           real(kind=realtype) dimension(ndimw),depend(ndimw) :: res
+           real(kind=realtype) dimension(ncells) :: indic
+
+           integer(kind=inttype), optional,check(len(psi)>=ndimw),depend(psi) :: ndimw=len(psi)
+           integer(kind=inttype), optional,check(len(indic)>=ncells),depend(indic) :: ncells=len(indic)
+       end subroutine computeadaptindicators
        end module adjointapi
        module adjointutils
 

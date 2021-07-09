@@ -4459,11 +4459,57 @@ class ADFLOW(AeroSolver):
 
         return resrtwo
 
-    def solveAdaptIndc(self, aeroProblem,releaseAdjointMemory=True, objective):
+    def solveAdaptIndc(self, aeroProblem, objective, releaseAdjointMemory=True):
         self.setAeroProblem(aeroProblem, releaseAdjointMemory)
         resR2 = self.getResidualRTwo(aeroProblem)
         psi = self.getAdjoint(objective)
-        self.adflow.adjointapi.solveadaptind(resR2,psi)
+        ncells = self.adflow.adjointvars.ncellslocal[0]
+        indic = numpy.zeros(ncells, float)
+        error = numpy.zeros(ncells, float)
+        self.adflow.adjointapi.computeadaptindicators(error, psi, resR2, indic)
+        # ind2 = numpy.zeros(ncells, float)
+        # for i in range(ncells):
+        #    psi_loc = psi[(i + 1) * 6 - 6 : (i + 1) * 6 - 1]
+        #    res_loc = resR2[(i + 1) * 6 - 6 : (i + 1) * 6 - 1]
+        #    ind2[i] = numpy.abs(numpy.dot(psi_loc, res_loc))
+        # psi1 = psi[0:6]
+        # res1 = resR2[0:6]
+        # print(numpy.dot(psi1, res1))
+        # print("max fortran indicator: %d" % numpy.max(indic))
+        # print("max python indicator: %d" % numpy.max(ind2))
+        # print(numpy.max(numpy.abs(ind2 - indic)))
+        # print("this is a test")
+        # print(numpy.max(ind2))
+        return indic, error
+
+    def plotAdaptIndc(self, aeroProblem, objective):
+        indic, error = self.solveAdaptIndc(aeroProblem, objective)
+        ncells = self.adflow.adjointvars.ncellslocal[0]
+        nstate = self.adflow.flowvarrefstate.nw
+        plotIndic = numpy.zeros(nstate * ncells, float)
+        counter = 0
+        for i in range(ncells):
+            for j in range(nstate):
+                plotIndic[counter] = indic[i]
+                counter = counter + 1
+        states = self.getStates()
+        basename = self.curAP.name
+        basename = basename + "_" + objective + "_adaptind"
+        self.setStates(plotIndic)
+        self.writeSolution(baseName=basename)
+        self.setStates(states)
+        return plotIndic
+
+    def plotAdjoint(self, aeroProblem, objective, releaseAdjointMemory=True):
+        self.setAeroProblem(aeroProblem, releaseAdjointMemory)
+        psi = self.getAdjoint(objective)
+        states = self.getStates()
+        basename = self.curAP.name
+        basename = basename + "_" + objective + "_adjoint"
+        self.setStates(psi)
+        self.writeSolution(baseName=basename)
+        self.setStates(states)
+
     def getFreeStreamResidual(self, aeroProblem):
         self.setAeroProblem(aeroProblem)
         rhoRes, totalRRes = self.adflow.nksolver.getfreestreamresidual()
