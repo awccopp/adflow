@@ -139,6 +139,9 @@ class ADFLOW(AeroSolver):
 
         defSetupTime = time.time()
 
+        # Matrix Setup Flag
+        self.adjointSetup = False
+
         # Initialize the inherited AeroSolver
         super().__init__(
             name,
@@ -186,11 +189,8 @@ class ADFLOW(AeroSolver):
         self.userSurfaceIntegrationsFinalized = False
         self.hasIntegrationSurfaces = False
 
-        # Matrix Setup Flag
-        self.adjointSetup = False
-
         # Write the intro message
-        self.adflow.utils.writeintromessage()
+        self.adflow.utls.writeintromessage()
 
         # Remind the user of all the adflow options:
         self.printOptions()
@@ -4910,7 +4910,7 @@ class ADFLOW(AeroSolver):
         )
 
     def _getOptionMap(self):
-        """ The ADflow option map and module mapping"""
+        """The ADflow option map and module mapping"""
 
         moduleMap = {
             "io": self.adflow.inputio,
