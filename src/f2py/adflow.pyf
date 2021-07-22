@@ -203,6 +203,11 @@ python module libadflow
            real(kind=realtype) dimension(ndimw),intent(in) :: states
            integer(kind=inttype) optional,intent(in),check(len(states)>=ndimw),depend(states) :: ndimw=len(states)
          end subroutine setstates
+         
+         subroutine transferstates(states,ndimw)
+           real(kind=realtype) dimension(ndimw),intent(in) :: states
+           integer(kind=inttype) optional,intent(in),check(len(states)>=ndimw),depend(states) :: ndimw=len(states)
+         end subroutine transferstates
 
          subroutine getinfosize(isize)
            integer(kind=inttype) intent(out) :: isize

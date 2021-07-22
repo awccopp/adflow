@@ -4267,6 +4267,12 @@ class ADFLOW(AeroSolver):
         """
         self.adflow.nksolver.setstates(states)
 
+    def transferStates(self, states):
+        """transfers the solution from a mesh an equivalent mesh that is uniformly coarsened
+        only works for airfoil meshes in serial where the j direction is 1 cell deep and all states live on one processor
+        """
+        self.adflow.nksolver.transferstates(states)
+
     def getSurfacePerturbation(self, seed=314):
         """This is is a debugging routine only. It is used only in regression
         tests when it is necessary to compute a consistent random
@@ -4467,19 +4473,6 @@ class ADFLOW(AeroSolver):
         indic = numpy.zeros(ncells, float)
         error = numpy.zeros(ncells, float)
         self.adflow.adjointapi.computeadaptindicators(error, psi, resR2, indic)
-        # ind2 = numpy.zeros(ncells, float)
-        # for i in range(ncells):
-        #    psi_loc = psi[(i + 1) * 6 - 6 : (i + 1) * 6 - 1]
-        #    res_loc = resR2[(i + 1) * 6 - 6 : (i + 1) * 6 - 1]
-        #    ind2[i] = numpy.abs(numpy.dot(psi_loc, res_loc))
-        # psi1 = psi[0:6]
-        # res1 = resR2[0:6]
-        # print(numpy.dot(psi1, res1))
-        # print("max fortran indicator: %d" % numpy.max(indic))
-        # print("max python indicator: %d" % numpy.max(ind2))
-        # print(numpy.max(numpy.abs(ind2 - indic)))
-        # print("this is a test")
-        # print(numpy.max(ind2))
         return indic, error
 
     def plotAdaptIndc(self, aeroProblem, objective):
