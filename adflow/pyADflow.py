@@ -4267,6 +4267,12 @@ class ADFLOW(AeroSolver):
         """
         self.adflow.nksolver.setstates(states)
 
+    def transferStates(self, states):
+        """transfers the solution from a mesh an equivalent mesh that is uniformly coarsened
+        only works for airfoil meshes in serial where the j direction is 1 cell deep and all states live on one processor
+        """
+        self.adflow.nksolver.transferstates(states)
+
     def getSurfacePerturbation(self, seed=314):
         """This is is a debugging routine only. It is used only in regression
         tests when it is necessary to compute a consistent random
@@ -4448,6 +4454,54 @@ class ADFLOW(AeroSolver):
         res = self.adflow.nksolver.getres(res)
 
         return res
+
+    def getResidualRTwo(self, aeroProblem, resrtwo=None, releaseAdjointMemory=True):
+        """Return the residual on this processor. Used in aerostructural
+        analysis"""
+        self.setAeroProblem(aeroProblem, releaseAdjointMemory)
+        if resrtwo is None:
+            resrtwo = numpy.zeros(self.getStateSize())
+        resrtwo = self.adflow.nksolver.getresrtwo(resrtwo)
+
+        return resrtwo
+
+    def solveAdaptIndc(self, aeroProblem, objective, releaseAdjointMemory=True):
+        self.setAeroProblem(aeroProblem, releaseAdjointMemory)
+        resR2 = self.getResidualRTwo(aeroProblem)
+        psi = self.getAdjoint(objective)
+        ncells = self.adflow.adjointvars.ncellslocal[0]
+        indic = numpy.zeros(ncells, float)
+        error = numpy.zeros(ncells, float)
+        self.adflow.adjointapi.computeadaptindicators(error, psi, resR2, indic)
+        return indic, error
+
+    def plotAdaptIndc(self, aeroProblem, objective):
+        indic, error = self.solveAdaptIndc(aeroProblem, objective)
+        ncells = self.adflow.adjointvars.ncellslocal[0]
+        nstate = self.adflow.flowvarrefstate.nw
+        plotIndic = numpy.zeros(nstate * ncells, float)
+        counter = 0
+        for i in range(ncells):
+            for j in range(nstate):
+                plotIndic[counter] = indic[i]
+                counter = counter + 1
+        states = self.getStates()
+        basename = self.curAP.name
+        basename = basename + "_" + objective + "_adaptind"
+        self.setStates(plotIndic)
+        self.writeSolution(baseName=basename)
+        self.setStates(states)
+        return plotIndic
+
+    def plotAdjoint(self, aeroProblem, objective, releaseAdjointMemory=True):
+        self.setAeroProblem(aeroProblem, releaseAdjointMemory)
+        psi = self.getAdjoint(objective)
+        states = self.getStates()
+        basename = self.curAP.name
+        basename = basename + "_" + objective + "_adjoint"
+        self.setStates(psi)
+        self.writeSolution(baseName=basename)
+        self.setStates(states)
 
     def getFreeStreamResidual(self, aeroProblem):
         self.setAeroProblem(aeroProblem)

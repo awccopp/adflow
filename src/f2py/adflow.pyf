@@ -203,6 +203,11 @@ python module libadflow
            real(kind=realtype) dimension(ndimw),intent(in) :: states
            integer(kind=inttype) optional,intent(in),check(len(states)>=ndimw),depend(states) :: ndimw=len(states)
          end subroutine setstates
+         
+         subroutine transferstates(states,ndimw)
+           real(kind=realtype) dimension(ndimw),intent(in) :: states
+           integer(kind=inttype) optional,intent(in),check(len(states)>=ndimw),depend(states) :: ndimw=len(states)
+         end subroutine transferstates
 
          subroutine getinfosize(isize)
            integer(kind=inttype) intent(out) :: isize
@@ -222,6 +227,11 @@ python module libadflow
            real(kind=realtype) dimension(ndimw),intent(in,out) :: res
            integer(kind=inttype) optional,intent(in),check(len(res)>=ndimw),depend(res) :: ndimw=len(res)
          end subroutine getres
+
+         subroutine getresrtwo(res,ndimw)
+           real(kind=realtype) dimension(ndimw),intent(in,out) :: res
+           integer(kind=inttype) optional,intent(in),check(len(res)>=ndimw),depend(res) :: ndimw=len(res)
+         end subroutine getresrtwo
 
          subroutine applypc(in_vec,out_vec,ndof)
            real(kind=realtype) dimension(ndof),intent(in) :: in_vec
@@ -615,7 +625,7 @@ python module libadflow
            real(kind=realtype) dimension(nstate) :: rhs
            character*(*) intent(in) :: filename
            integer(kind=inttype), optional,check(len(rhs)>=nstate),depend(rhs) :: nstate=len(rhs)
-         end subroutine solveadjoint
+         end subroutine saveadjointrhs
 
 
          subroutine savecellcenters(filename)
@@ -672,6 +682,15 @@ python module libadflow
                 logical intent(in) :: bcvarsempty
             end subroutine computematrixfreeproductbwd
 #endif
+       subroutine computeadaptindicators(error, psi,res,indic, ndimw, ncells)
+           real(kind=realtype) dimension(ncells):: error
+           real(kind=realtype) dimension(ndimw) :: psi
+           real(kind=realtype) dimension(ndimw),depend(ndimw) :: res
+           real(kind=realtype) dimension(ncells) :: indic
+
+           integer(kind=inttype), optional,check(len(psi)>=ndimw),depend(psi) :: ndimw=len(psi)
+           integer(kind=inttype), optional,check(len(indic)>=ncells),depend(indic) :: ncells=len(indic)
+       end subroutine computeadaptindicators
        end module adjointapi
        module adjointutils
 

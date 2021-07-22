@@ -1079,14 +1079,22 @@ contains
     step = alpha
   end subroutine LSNM
 
-  subroutine computeResidualNK(useUpdateIntermed)
+  subroutine computeResidualNK(useUpdateIntermed, useDissApprox, useViscApprox)
 
     use constants
     use blockette, only : blocketteRes
     implicit none
 
     logical, intent(in), optional :: useUpdateIntermed
+    logical, intent(in), optional :: useDissApprox
+    logical, intent(in), optional :: useViscApprox
     logical :: updateIntermed
+    logical :: dissApprox
+    logical :: viscApprox
+
+    !Default to not using diss/visc approx (full 33 point stencil)
+    dissApprox = .false.
+    viscApprox = .false.
 
     ! Only update the time step if explicitly requested
     updateIntermed = .false.
@@ -1095,8 +1103,15 @@ contains
       updateIntermed = useUpdateIntermed
     end if
 
+    if (present(useDissApprox)) then
+      dissApprox = useDissApprox
+    end if
+
+    if (present(useViscApprox)) then
+      viscApprox = useViscApprox
+    end if
     ! Shell function to maintain backward compatibility with code using computeResidualNK
-    call blocketteRes(useUpdateIntermed = updateIntermed)
+    call blocketteRes(useUpdateIntermed = updateIntermed, useDissApprox = dissApprox, useViscApprox = viscApprox)
 
   end subroutine computeResidualNK
 
@@ -1448,6 +1463,45 @@ contains
 
   end subroutine getRes
 
+  subroutine getResRTwo(resR2,ndimw)
+
+   ! Compute the residual using 7 point stencil and return result to Python
+   use constants
+   use blockPointers, only : il, jl, kl, nDom, dw, volRef
+   use inputTimeSpectral, only : nTimeIntervalsSpectral
+   use flowvarrefstate, only : nw
+   use utils, only : setPointers
+
+   implicit none
+
+   integer(kind=intType),intent(in):: ndimw
+   real(kind=realType),dimension(ndimw),intent(inout) :: resR2(ndimw)
+
+   ! Local Variables
+   integer(kind=intType) :: nn,i,j,k,l,counter,sps
+   real(kind=realType) :: ovv
+   !compute residuals using diss and visc approx
+   call computeResidualNK(useUpdateIntermed = .True., useDissApprox = .True., useViscApprox = .True.)
+   counter = 0
+   do nn=1,nDom
+      do sps=1,nTimeIntervalsSpectral
+         call setPointers(nn,1,sps)
+         do k=2,kl
+            do j=2,jl
+               do i=2,il
+                  ovv = one/volRef(i,j,k)
+                  do l=1,nw
+                     counter = counter + 1
+                     resR2(counter) = dw(i,j,k,l)*ovv
+                  end do
+               end do
+            end do
+         end do
+      end do
+   end do
+
+ end subroutine getResRTwo
+
   subroutine setStates(states,ndimw)
 
     ! Take in externallly generated states and set them in ADflow
@@ -1482,6 +1536,54 @@ contains
        end do
     end do
   end subroutine setStates
+
+  subroutine transferStates(states,ndimw)
+       ! Take in externallly generated states and set them in ADflow
+   use constants
+   use blockPointers, only : il, jl, kl, nDom, w
+   use inputTimeSpectral, only : nTimeIntervalsSpectral
+   use flowvarrefstate, only : nw
+   use utils, only : setPointers
+
+   implicit none
+
+   integer(kind=intType),intent(in):: ndimw
+   real(kind=realType),dimension(ndimw),intent(in) :: states(ndimw)
+
+   ! Local Variables
+   integer(kind=intType) :: nn,il_coarse,kl_coarse,i,j,k,l,counter,sps,i_loc,k_loc
+   print *, 'Printint Transfer States Information'
+   print *, 'il: ', il
+   print *, 'jl: ', jl
+   print *, 'kl: ', kl
+   il_coarse = (il-1)/2+1
+   kl_coarse = (kl-1)/2+1
+   print *, 'il_coarse: ', il_coarse
+   print *, 'kl_coarse: ', kl_coarse
+   counter = 0
+   
+   do nn=1,nDom
+      do sps=1,nTimeIntervalsSpectral
+         call setPointers(nn,1,sps)
+         do k=2,kl_coarse
+            do j=2,jl
+               do i=2,il_coarse
+                  do l=1,nw
+                     i_loc = 2*i-2
+                     k_loc = 2*k-2
+                     counter = counter + 1
+                     w(i_loc,j,k_loc,l) = states(counter)
+                     w(i_loc+1,j,k_loc,l) = states(counter)
+                     w(i_loc,j,k_loc+1,l) = states(counter)
+                     w(i_loc+1,j,k_loc+1,l) = states(counter)
+                  end do
+               end do
+            end do
+         end do
+      end do
+   end do
+  end subroutine transferStates
+
 
   subroutine getInfoSize(iSize)
     use constants
