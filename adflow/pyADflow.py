@@ -190,7 +190,7 @@ class ADFLOW(AeroSolver):
         self.hasIntegrationSurfaces = False
 
         # Write the intro message
-        self.adflow.utls.writeintromessage()
+        self.adflow.utils.writeintromessage()
 
         # Remind the user of all the adflow options:
         self.printOptions()
