@@ -1467,7 +1467,7 @@ contains
 
    ! Compute the residual using 7 point stencil and return result to Python
    use constants
-   use blockPointers, only : il, jl, kl, nDom, dw, volRef
+   use blockPointers, only : il, jl, kl, nDom, dw, volRef,nx, ny,nz,iBegOr, iEndOr, jBegOr, jEndOr, kBegOr, kEndOr
    use inputTimeSpectral, only : nTimeIntervalsSpectral
    use flowvarrefstate, only : nw
    use utils, only : setPointers
@@ -1540,7 +1540,7 @@ contains
   subroutine transferStates(states,ndimw)
        ! Take in externallly generated states and set them in ADflow
    use constants
-   use blockPointers, only : il, jl, kl, nDom, w
+   use blockPointers, only : il, jl, kl, nDom, w, nx, ny, nz
    use inputTimeSpectral, only : nTimeIntervalsSpectral
    use flowvarrefstate, only : nw
    use utils, only : setPointers
@@ -1552,14 +1552,8 @@ contains
 
    ! Local Variables
    integer(kind=intType) :: nn,il_coarse,kl_coarse,i,j,k,l,counter,sps,i_loc,k_loc
-   print *, 'Printint Transfer States Information'
-   print *, 'il: ', il
-   print *, 'jl: ', jl
-   print *, 'kl: ', kl
    il_coarse = (il-1)/2+1
    kl_coarse = (kl-1)/2+1
-   print *, 'il_coarse: ', il_coarse
-   print *, 'kl_coarse: ', kl_coarse
    counter = 0
    
    do nn=1,nDom

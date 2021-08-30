@@ -1294,7 +1294,7 @@ contains
          do j = 1, nw 
             tmp = psi(counter)*res(counter)
             sum = sum + tmp
-            counter = counter + one
+            counter = counter + 1
          end do 
          error(i) = sum
          IF (sum .LT. zero) THEN
@@ -1303,4 +1303,57 @@ contains
          indic(i) = sum
       end do
    end subroutine computeAdaptIndicators
+
+   subroutine flagCells(indic, flaggedcells, threshold, ncells)
+      use constants
+      use blockPointers, only : il, jl, kl, nDom
+      use blockPointers, only : iBegOr,jBegOr, kBegOr
+      use inputTimeSpectral, only : nTimeIntervalsSpectral
+      use flowvarrefstate, only : nw
+
+      use utils, only : setPointers
+      implicit none
+      !inputs/outputs
+      real(kind=realType), dimension(ncells),intent(in) :: indic(ncells)
+      !real(kind= realType), dimension(ncells),intent(inout) :: i_list(ncells)
+      !real(kind= realType), dimension(ncells),intent(inout) :: j_list(ncells)
+      !real(kind= realType), dimension(ncells),intent(inout) :: k_list(ncells)
+
+      real(kind=realType),dimension(ncells,4),intent(inout):: flaggedcells(ncells,4)
+      integer(kind=intType),intent(in):: ncells
+      real(kind=realType), dimension(1),intent(in) :: threshold
+
+      !local variables
+      integer(kind=intType) :: nn,i,j,k,l,counter,sps,i_global,j_global,k_global
+      counter = 1
+      do nn=1,nDom
+         do sps=1,nTimeIntervalsSpectral
+            call setPointers(nn,1,sps)
+            do k=2,kl
+               do j=2,jl
+                  do i=2,il
+                     i_global = (i-2) + iBegOr
+                     j_global = (j-2) + jBegOr
+                     k_global = (k-2) + kBegOr
+                     ! IF (i_global .LT. 10) THEN
+                     !    print *, 'iglobal: ', i_global
+                     ! END IF
+                     flaggedcells(counter,1) = i_global 
+                     ! IF (i_global .LT. 10) THEN
+                     !    print *, 'Stored iglobal: ', flaggedcells(counter,1)
+                     ! !END IF
+                     flaggedcells(counter,2) = j_global 
+                     flaggedcells(counter,3) = k_global 
+                     IF (indic(counter) .GE. threshold(1)) THEN 
+                        flaggedcells(counter,4) = 1
+                     ELSE 
+                        flaggedcells(counter,4) = 0
+                     END IF 
+                     counter = counter + 1
+                  end do
+               end do
+            end do
+         end do
+      end do
+   end subroutine flagCells
 end module adjointAPI

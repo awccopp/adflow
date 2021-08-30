@@ -4503,6 +4503,16 @@ class ADFLOW(AeroSolver):
         self.writeSolution(baseName=basename)
         self.setStates(states)
 
+    def flagcells(self, indic, fixedfrac):
+        ncells = self.adflow.adjointvars.ncellslocal[0]
+        flaggedCells = numpy.zeros((ncells, 4), float, order="F")
+        sortedIndic = numpy.flip(numpy.sort(indic))
+        threshold = numpy.array([sortedIndic[int(ncells * fixedfrac) - 1]])
+        self.adflow.adjointapi.flagcells(indic, flaggedCells, threshold)
+        flaggedCells = flaggedCells.astype(int)
+        flaggedCells = flaggedCells[~numpy.any(flaggedCells == 0, axis=1)]
+        return flaggedCells
+
     def getFreeStreamResidual(self, aeroProblem):
         self.setAeroProblem(aeroProblem)
         rhoRes, totalRRes = self.adflow.nksolver.getfreestreamresidual()
