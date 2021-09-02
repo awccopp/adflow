@@ -1307,10 +1307,8 @@ contains
    subroutine flagCells(indic, flaggedcells, threshold, ncells)
       use constants
       use blockPointers, only : il, jl, kl, nDom
-      use blockPointers, only : iBegOr,jBegOr, kBegOr
+      use blockPointers, only : iBegOr,jBegOr, kBegOr, nbkGlobal
       use inputTimeSpectral, only : nTimeIntervalsSpectral
-      use flowvarrefstate, only : nw
-
       use utils, only : setPointers
       implicit none
       !inputs/outputs
@@ -1319,7 +1317,7 @@ contains
       !real(kind= realType), dimension(ncells),intent(inout) :: j_list(ncells)
       !real(kind= realType), dimension(ncells),intent(inout) :: k_list(ncells)
 
-      real(kind=realType),dimension(ncells,4),intent(inout):: flaggedcells(ncells,4)
+      real(kind=realType),dimension(ncells,5),intent(inout):: flaggedcells(ncells,5)
       integer(kind=intType),intent(in):: ncells
       real(kind=realType), dimension(1),intent(in) :: threshold
 
@@ -1344,10 +1342,11 @@ contains
                      ! !END IF
                      flaggedcells(counter,2) = j_global 
                      flaggedcells(counter,3) = k_global 
+                     flaggedcells(counter,4) = nbkGlobal
                      IF (indic(counter) .GE. threshold(1)) THEN 
-                        flaggedcells(counter,4) = 1
+                        flaggedcells(counter,5) = 1
                      ELSE 
-                        flaggedcells(counter,4) = 0
+                        flaggedcells(counter,5) = 0
                      END IF 
                      counter = counter + 1
                   end do
@@ -1356,4 +1355,6 @@ contains
          end do
       end do
    end subroutine flagCells
+
+   
 end module adjointAPI

@@ -4507,19 +4507,25 @@ class ADFLOW(AeroSolver):
         "flag cells top x% of cells for refinement based on error indicator"
         # get total number of cells on this proc and in mesh
         ncells = self.adflow.adjointvars.ncellslocal[0]
-        nCellTotal = self.comm.allreduce(ncells)
+        ncompute = self.adflow.oversetapi.computencompute()
+        nComputeTotal = self.comm.reduce(ncompute)
         # allocate array to flag cells on this proc
-        flaggedCells = numpy.zeros((ncells, 4), float, order="F")
+        flaggedCells = numpy.zeros((ncells, 5), float, order="F")
         # gather error indicators from all cells sort and find the fixedfraction threshold of error
-        indicTotal = self.comm.allgather(indic)
-        indicTotal = numpy.concatenate(indicTotal)
-        sortedIndic = numpy.flip(numpy.sort(indicTotal))
-        threshold = numpy.array([sortedIndic[int(nCellTotal * fixedfrac) - 1]])
+        indicTotal = self.comm.gather(indic)
+        if self.comm.rank == 0:
+            indicTotal = numpy.concatenate(indicTotal)
+            sortedIndic = numpy.flip(numpy.sort(indicTotal))
+            threshold = numpy.array([sortedIndic[int(nComputeTotal * fixedfrac) - 1]])
+        else:
+            threshold = None
+        threshold = self.comm.bcast(threshold, root=0)
         # run subroutine to flag cells
         self.adflow.adjointapi.flagcells(indic, flaggedCells, threshold)
         # convert array to be int array since just holding i,j,k values and delete entries where cells werent flagged
         flaggedCells = flaggedCells.astype(int)
         flaggedCells = flaggedCells[~numpy.any(flaggedCells == 0, axis=1)]
+        flaggedCells = flaggedCells[:, 0:4]
         return flaggedCells
 
     def getFreeStreamResidual(self, aeroProblem):

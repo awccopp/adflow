@@ -2216,5 +2216,33 @@ contains
        setValue = .True.
     end if
   end subroutine setBlockPriority
+  subroutine computeNcompute(nCompute)
+   !subroutine that compute the number of compute cells 
+   use constants
+   use blockPointers, only : il, jl, kl, nDom, iblank
+   use blockPointers, only : iBegOr,jBegOr, kBegOr, nbkGlobal
+   use inputTimeSpectral, only : nTimeIntervalsSpectral
+   use utils, only : setPointers
+   integer(kind=intType),intent(out) :: nCompute
+
+   !local variables
+   integer(kind=intType) :: nn,i,j,k,l,sps
+   nCompute = 0
+   do nn=1, nDom
+      do sps=1, nTimeIntervalsSpectral
+         call setPointers(nn,1,sps)
+         do k=2, kl
+            do j=2, jl
+               do i=2, il
+                IF(iblank(i,j,k) .EQ. 1_intType) THEN
+                  nCompute = nCompute + 1
+                END IF
+               end do
+            end do
+         end do
+      end do
+   end do
+
+  end subroutine computeNCompute
 
 end module oversetAPI
