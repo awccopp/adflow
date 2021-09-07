@@ -697,7 +697,7 @@ python module libadflow
 
        subroutine flagcells(indic,flaggedcells,threshold,ncells)
         real(kind=realtype) dimension(ncells) :: indic
-        real(kind=realtype) dimension(ncells,5):: flaggedcells
+        integer(kind=inttype) dimension(ncells,5):: flaggedcells
         real(kind=realtype), dimension(1) :: threshold
         integer(kind=inttype), optional,check(len(indic)>=ncells),depend(indic) :: ncells=len(indic)
        end subroutine flagcells

@@ -4494,6 +4494,7 @@ class ADFLOW(AeroSolver):
         return plotIndic
 
     def plotAdjoint(self, aeroProblem, objective, releaseAdjointMemory=True):
+        # sets the state vector to the adjoint vector writes solution then sets states back
         self.setAeroProblem(aeroProblem, releaseAdjointMemory)
         psi = self.getAdjoint(objective)
         states = self.getStates()
@@ -4510,7 +4511,7 @@ class ADFLOW(AeroSolver):
         ncompute = self.adflow.oversetapi.computencompute()
         nComputeTotal = self.comm.reduce(ncompute)
         # allocate array to flag cells on this proc
-        flaggedCells = numpy.zeros((ncells, 5), float, order="F")
+        flaggedCells = numpy.zeros((ncells, 5), "intc", order="F")
         # gather error indicators from all cells sort and find the fixedfraction threshold of error
         indicTotal = self.comm.gather(indic)
         if self.comm.rank == 0:
@@ -4523,7 +4524,6 @@ class ADFLOW(AeroSolver):
         # run subroutine to flag cells
         self.adflow.adjointapi.flagcells(indic, flaggedCells, threshold)
         # convert array to be int array since just holding i,j,k values and delete entries where cells werent flagged
-        flaggedCells = flaggedCells.astype(int)
         flaggedCells = flaggedCells[~numpy.any(flaggedCells == 0, axis=1)]
         flaggedCells = flaggedCells[:, 0:4]
         return flaggedCells

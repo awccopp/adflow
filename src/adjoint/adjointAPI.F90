@@ -1317,7 +1317,7 @@ contains
       !real(kind= realType), dimension(ncells),intent(inout) :: j_list(ncells)
       !real(kind= realType), dimension(ncells),intent(inout) :: k_list(ncells)
 
-      real(kind=realType),dimension(ncells,5),intent(inout):: flaggedcells(ncells,5)
+      integer(kind=intType),dimension(ncells,5),intent(inout):: flaggedcells(ncells,5)
       integer(kind=intType),intent(in):: ncells
       real(kind=realType), dimension(1),intent(in) :: threshold
 
