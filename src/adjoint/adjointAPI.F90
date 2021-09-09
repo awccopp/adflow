@@ -1304,7 +1304,7 @@ contains
       end do
    end subroutine computeAdaptIndicators
 
-   subroutine flagCells(indic, flaggedcells, threshold, ncells, flaggedError)
+   subroutine flagCells(indic, error flaggedcells, threshold, ncells, flaggedError)
       use constants
       use blockPointers, only : il, jl, kl, nDom
       use blockPointers, only : iBegOr,jBegOr, kBegOr, nbkGlobal
@@ -1313,6 +1313,8 @@ contains
       implicit none
       !inputs/outputs
       real(kind=realType), dimension(ncells),intent(in) :: indic(ncells)
+      real(kind=realType), dimension(ncells),intent(in) :: error(ncells)
+
       !real(kind= realType), dimension(ncells),intent(inout) :: i_list(ncells)
       !real(kind= realType), dimension(ncells),intent(inout) :: j_list(ncells)
       !real(kind= realType), dimension(ncells),intent(inout) :: k_list(ncells)
@@ -1324,6 +1326,7 @@ contains
       !local variables
       integer(kind=intType) :: nn,i,j,k,l,counter,sps,i_global,j_global,k_global
       counter = 1
+      flaggedError = zero
       do nn=1,nDom
          do sps=1,nTimeIntervalsSpectral
             call setPointers(nn,1,sps)
@@ -1345,6 +1348,7 @@ contains
                      flaggedcells(counter,4) = nbkGlobal
                      IF (indic(counter) .GE. threshold(1)) THEN 
                         flaggedcells(counter,5) = 1
+                        flaggedError = flaggedError + error(counter)
                      ELSE 
                         flaggedcells(counter,5) = 0
                      END IF 

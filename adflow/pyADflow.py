@@ -4536,6 +4536,7 @@ class ADFLOW(AeroSolver):
         ncompute = self.adflow.oversetapi.computencompute()
         nComputeTotal = self.comm.reduce(ncompute)
         indic = self.getIndicators(self.curAP, objective)
+        error = self.getCellError(self.curAP, objective)
         # allocate array to flag cells on this proc
         flaggedCells = numpy.zeros((ncells, 5), "intc", order="F")
         # gather error indicators from all cells sort and find the fixedfraction threshold of error
@@ -4548,11 +4549,11 @@ class ADFLOW(AeroSolver):
             threshold = None
         threshold = self.comm.bcast(threshold, root=0)
         # run subroutine to flag cells
-        self.adflow.adjointapi.flagcells(indic, flaggedCells, threshold)
+        flaggedError = self.adflow.adjointapi.flagcells(indic, error, flaggedCells, threshold)
         # convert array to be int array since just holding i,j,k values and delete entries where cells werent flagged
         flaggedCells = flaggedCells[~numpy.any(flaggedCells == 0, axis=1)]
         flaggedCells = flaggedCells[:, 0:4]
-        return flaggedCells
+        return flaggedCells, flaggedError
 
     def getFreeStreamResidual(self, aeroProblem):
         self.setAeroProblem(aeroProblem)

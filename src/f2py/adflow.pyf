@@ -695,11 +695,13 @@ python module libadflow
            integer(kind=inttype), optional,check(len(indic)>=ncells),depend(indic) :: ncells=len(indic)
        end subroutine computeadaptindicators
 
-       subroutine flagcells(indic,flaggedcells,threshold,ncells)
+       subroutine flagcells(indic,error flaggedcells,threshold,ncells,coverederror)
         real(kind=realtype) dimension(ncells) :: indic
+        real(kind=realtype) dimension(ncells):: error
         integer(kind=inttype) dimension(ncells,5):: flaggedcells
         real(kind=realtype), dimension(1) :: threshold
         integer(kind=inttype), optional,check(len(indic)>=ncells),depend(indic) :: ncells=len(indic)
+        real(kind=realType), intent(out) :: flaggedError
        end subroutine flagcells
 
        end module adjointapi
