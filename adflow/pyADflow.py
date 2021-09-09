@@ -27,7 +27,7 @@ import copy
 import types
 import numpy
 import sys
-from mpi4py import MPI
+from mpi4py import MPI, get_include
 from baseclasses import AeroSolver, AeroProblem, getPy3SafeString
 from baseclasses.utils import Error
 from . import MExt
@@ -4473,10 +4473,36 @@ class ADFLOW(AeroSolver):
         indic = numpy.zeros(ncells, float)
         error = numpy.zeros(ncells, float)
         self.adflow.adjointapi.computeadaptindicators(error, psi, resR2, indic)
+
+        try:
+            self.curAP.adflowData.indicators
+        except AttributeError:
+            self.curAP.adflowData.indicators = OrderedDict()
+
+        try:
+            self.curAP.adflowData.error
+        except AttributeError:
+            self.curAP.adflowData.error = OrderedDict()
+        self.curAP.adflowData.indicators[objective] = indic
+        self.curAP.adflowData.error[objective] = error
         return indic, error
 
+    def getIndicators(self, aeroProblem, objective):
+        self.setAeroProblem(aeroProblem)
+        if objective in self.curAP.adflowData.indicators:
+            return self.curAP.adflowData.indicators[objective]
+        else:
+            return numpy.zeros(self.adflow.adjointvars.ncellslocal[0], self.dtype)
+
+    def getCellError(self, aeroProblem, objective):
+        self.setAeroProblem(aeroProblem)
+        if objective in self.curAP.adflowData.error:
+            return self.curAP.adflowData.error[objective]
+        else:
+            return numpy.zeros(self.adflow.adjointvars.ncellslocal[0], self.dtype)
+
     def plotAdaptIndc(self, aeroProblem, objective):
-        indic, error = self.solveAdaptIndc(aeroProblem, objective)
+        indic = self.getIndicators(aeroProblem, objective)
         ncells = self.adflow.adjointvars.ncellslocal[0]
         nstate = self.adflow.flowvarrefstate.nw
         plotIndic = numpy.zeros(nstate * ncells, float)
@@ -4491,7 +4517,6 @@ class ADFLOW(AeroSolver):
         self.setStates(plotIndic)
         self.writeSolution(baseName=basename)
         self.setStates(states)
-        return plotIndic
 
     def plotAdjoint(self, aeroProblem, objective, releaseAdjointMemory=True):
         # sets the state vector to the adjoint vector writes solution then sets states back
@@ -4504,12 +4529,13 @@ class ADFLOW(AeroSolver):
         self.writeSolution(baseName=basename)
         self.setStates(states)
 
-    def flagcells(self, indic, fixedfrac):
+    def flagcells(self, objective, fixedfrac):
         "flag cells top x% of cells for refinement based on error indicator"
         # get total number of cells on this proc and in mesh
         ncells = self.adflow.adjointvars.ncellslocal[0]
         ncompute = self.adflow.oversetapi.computencompute()
         nComputeTotal = self.comm.reduce(ncompute)
+        indic = self.getIndicators(self.curAP, objective)
         # allocate array to flag cells on this proc
         flaggedCells = numpy.zeros((ncells, 5), "intc", order="F")
         # gather error indicators from all cells sort and find the fixedfraction threshold of error

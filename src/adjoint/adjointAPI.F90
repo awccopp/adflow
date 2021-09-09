@@ -1304,7 +1304,7 @@ contains
       end do
    end subroutine computeAdaptIndicators
 
-   subroutine flagCells(indic, flaggedcells, threshold, ncells)
+   subroutine flagCells(indic, flaggedcells, threshold, ncells, flaggedError)
       use constants
       use blockPointers, only : il, jl, kl, nDom
       use blockPointers, only : iBegOr,jBegOr, kBegOr, nbkGlobal
@@ -1320,7 +1320,7 @@ contains
       integer(kind=intType),dimension(ncells,5),intent(inout):: flaggedcells(ncells,5)
       integer(kind=intType),intent(in):: ncells
       real(kind=realType), dimension(1),intent(in) :: threshold
-
+      real(kind=realType), intent(out) :: flaggedError
       !local variables
       integer(kind=intType) :: nn,i,j,k,l,counter,sps,i_global,j_global,k_global
       counter = 1
