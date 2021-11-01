@@ -1304,7 +1304,7 @@ contains
       end do
    end subroutine computeAdaptIndicators
 
-   subroutine flagCells(indic, error flaggedcells, threshold, ncells, flaggedError)
+   subroutine flagCells(indic, error, flaggedcells, threshold, ncells, flaggedError)
       use constants
       use blockPointers, only : il, jl, kl, nDom
       use blockPointers, only : iBegOr,jBegOr, kBegOr, nbkGlobal
@@ -1314,12 +1314,8 @@ contains
       !inputs/outputs
       real(kind=realType), dimension(ncells),intent(in) :: indic(ncells)
       real(kind=realType), dimension(ncells),intent(in) :: error(ncells)
-
-      !real(kind= realType), dimension(ncells),intent(inout) :: i_list(ncells)
-      !real(kind= realType), dimension(ncells),intent(inout) :: j_list(ncells)
-      !real(kind= realType), dimension(ncells),intent(inout) :: k_list(ncells)
-
       integer(kind=intType),dimension(ncells,5),intent(inout):: flaggedcells(ncells,5)
+      !real(kind=realType), dimension(ncells),intent(inout) :: flaggedIndic
       integer(kind=intType),intent(in):: ncells
       real(kind=realType), dimension(1),intent(in) :: threshold
       real(kind=realType), intent(out) :: flaggedError
@@ -1348,6 +1344,7 @@ contains
                      flaggedcells(counter,4) = nbkGlobal
                      IF (indic(counter) .GE. threshold(1)) THEN 
                         flaggedcells(counter,5) = 1
+                        !flaggedIndic(counter) = indic(counter)
                         flaggedError = flaggedError + error(counter)
                      ELSE 
                         flaggedcells(counter,5) = 0
@@ -1360,5 +1357,98 @@ contains
       end do
    end subroutine flagCells
 
+   subroutine computeRegionError(blockDims,error,ncells,blockError)
+      use constants
+      use blockPointers, only : il, jl, kl, nDom
+      use blockPointers, only : iBegOr,jBegOr, kBegOr, nbkGlobal
+      use inputTimeSpectral, only : nTimeIntervalsSpectral
+      use utils, only : setPointers
+      integer(kind=intType),dimension(7),intent(in):: blockDims(7)
+      real(kind=realType), dimension(ncells),intent(in) :: error(ncells)
+      integer(kind=intType),intent(in):: ncells
+
+      real(kind=realType), intent(out) :: blockError
+
+      !local vars
+      !loop vars
+      integer(kind=intType) :: nn,i,j,k,l,counter,sps, indx
+      !mesh vars
+      integer(kind=intType) :: i_global,j_global,k_global
+
+      counter = 1
+      indx = 0 
+      blockError = zero
+      do nn=1,nDom
+         do sps=1,nTimeIntervalsSpectral
+            call setPointers(nn,1,sps)
+            if(nbkGlobal .EQ. blockDims(7)) then
+               do k=2,kl
+                  !write(*,*) "starting k Loop"
+                  k_global = (k-2) + kBegOr
+                  if (k_global .GE. blockDims(5) .and. k_global .LE. blockDims(6)) then
+                     do j=2,jl
+                        !write(*,*) "starting j loop"
+                        j_global = (j-2) + jBegOr
+                        if (j_global .GE. blockDims(3) .and. j_global .LE. blockDims(4)) then
+                           do i=2,il 
+                              !write(*,*) "starting i loop"
+                              i_global = (i-2) + iBegOr
+                              if (i_global .GE. blockDims(1) .and. i_global .LE. blockDims(2)) then
+                                 indx = indx + 1
+                                 blockError = blockError + error(counter)
+                              end if
+                              counter = counter + 1 
+                           end do
+                        else 
+                           counter = counter + (il-1)
+                        end if 
+                     end do
+                  else
+                     counter = counter + (jl-1)*(il-1)
+                  end if
+               end do
+            else
+               counter = counter + (kl-1)*(jl-1)*(il-1)
+            end if
+         end do
+      end do
+   end subroutine computeRegionError
    
+
+   subroutine scaleAdjoint(psi, psi2,ndimw)
+      use constants
+      use blockPointers, only : il, jl, kl, nDom, dw, volRef
+      use inputTimeSpectral, only : nTimeIntervalsSpectral
+      use flowvarrefstate, only : nw
+      use utils, only : setPointers
+
+      implicit none
+
+      integer(kind=intType),intent(in):: ndimw
+      real(kind=realType),dimension(ndimw),intent(inout) :: psi(ndimw)
+      real(kind=realType),dimension(ndimw),intent(inout) :: psi2(ndimw)
+
+      ! Local Variables
+      integer(kind=intType) :: nn,i,j,k,l,counter,sps
+      real(kind=realType) :: ovv
+
+      counter = 0
+      do nn=1,nDom
+       do sps=1,nTimeIntervalsSpectral
+          call setPointers(nn,1,sps)
+          do k=2,kl
+             do j=2,jl
+                do i=2,il
+                   ovv = one/volRef(i,j,k)
+                   do l=1,nw
+                      counter = counter + 1
+                      psi2(counter) = psi(counter)*ovv
+                   end do
+                end do
+             end do
+          end do
+       end do
+    end do
+
+   end subroutine scaleAdjoint
 end module adjointAPI

@@ -27,7 +27,7 @@ import copy
 import types
 import numpy
 import sys
-from mpi4py import MPI, get_include
+from mpi4py import MPI
 from baseclasses import AeroSolver, AeroProblem, getPy3SafeString
 from baseclasses.utils import Error
 from . import MExt
@@ -4529,16 +4529,37 @@ class ADFLOW(AeroSolver):
         self.writeSolution(baseName=basename)
         self.setStates(states)
 
+    def plotAdjointScaled(self, aeroProblem, objective, releaseAdjointMemory=True):
+        # sets the state vector to the adjoint vector writes solution then sets states back
+        self.setAeroProblem(aeroProblem, releaseAdjointMemory)
+        psi = self.getAdjoint(objective)
+        states = self.getStates()
+        basename = self.curAP.name
+        basename = basename + "_" + objective + "_adjoint_scaled"
+        psi2 = numpy.zeros_like(psi)
+        self.adflow.adjointapi.scaleadjoint(psi, psi2)
+        self.setStates(psi2)
+        self.writeSolution(baseName=basename)
+        self.setStates(states)
+
     def flagcells(self, objective, fixedfrac):
+        """
+        flag cells based on the adjoint weighted residual for given objective function
+        flags the cells with the top x% of error based on fixedFrac input
+
+        Outputs array with i,j,k,cgnsBlockID as cols with 1 based indexing for cells
+        each row corresponds to a flagged cell
+        """
         "flag cells top x% of cells for refinement based on error indicator"
         # get total number of cells on this proc and in mesh
         ncells = self.adflow.adjointvars.ncellslocal[0]
         ncompute = self.adflow.oversetapi.computencompute()
         nComputeTotal = self.comm.reduce(ncompute)
         indic = self.getIndicators(self.curAP, objective)
-        error = self.getCellError(self.curAP, objective)
+        # error = self.getCellError(self.curAP, objective)
         # allocate array to flag cells on this proc
         flaggedCells = numpy.zeros((ncells, 5), "intc", order="F")
+        flaggedIndic = numpy.zeros(ncells, float)
         # gather error indicators from all cells sort and find the fixedfraction threshold of error
         indicTotal = self.comm.gather(indic)
         if self.comm.rank == 0:
@@ -4549,11 +4570,26 @@ class ADFLOW(AeroSolver):
             threshold = None
         threshold = self.comm.bcast(threshold, root=0)
         # run subroutine to flag cells
-        flaggedError = self.adflow.adjointapi.flagcells(indic, error, flaggedCells, threshold)
+        flaggedError = self.adflow.adjointapi.flagcells(indic, indic, flaggedCells, threshold)
         # convert array to be int array since just holding i,j,k values and delete entries where cells werent flagged
+        flaggedIndic = indic[~numpy.any(flaggedCells == 0, axis=1)]
         flaggedCells = flaggedCells[~numpy.any(flaggedCells == 0, axis=1)]
         flaggedCells = flaggedCells[:, 0:4]
-        return flaggedCells, flaggedError
+
+        return flaggedCells, flaggedIndic, flaggedError
+
+    def computeError(self, refineBlocks, objective):
+        numBlocks = numpy.shape(refineBlocks)[0]
+
+        # print(numBlocks)
+        errorBlocks = 0
+        error = self.getIndicators(self.curAP, objective)
+        for i in range(numBlocks):
+            blockDims = refineBlocks[i, :]
+            blockError = self.adflow.adjointapi.computeregionerror(blockDims, error)
+            errorBlocks = errorBlocks + blockError
+        totError = self.comm.allreduce(errorBlocks)
+        return totError
 
     def getFreeStreamResidual(self, aeroProblem):
         self.setAeroProblem(aeroProblem)
