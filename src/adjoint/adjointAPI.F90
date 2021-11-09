@@ -1451,4 +1451,41 @@ contains
     end do
 
    end subroutine scaleAdjoint
+
+   subroutine computeEntropy(entropy,ncells)
+      use constants
+      use blockPointers, only : il, jl, kl, nDom, dw, volRef, w, gamma
+      use inputTimeSpectral, only : nTimeIntervalsSpectral
+      use flowvarrefstate, only : nw
+      use utils, only : setPointers
+      use inputPhysics
+
+      implicit none
+
+      integer(kind=intType),intent(in):: ncells
+      real(kind=realType),dimension(ncells),intent(inout) :: entropy(ncells)
+
+      ! Local Variables
+      integer(kind=intType) :: nn,i,j,k,l,counter,sps
+      real(kind=realType) :: ovv
+      real(kind=realtype) :: gm1, v2, p 
+      gm1 = gammaConstant - one
+      counter = 1 
+      do nn=1,nDom
+         do sps=1,nTimeIntervalsSpectral
+            call setPointers(nn,1,sps)
+            do k=2,kl
+               do j=2,jl
+                  do i=2,il
+                     v2 = w(i, j, k, ivx)**2 + w(i, j, k, ivy)**2 + w(i, j, k, ivz)**2
+                     p = gm1*(w(i, j, k, irhoE) - half*w( i, j, k, irho)*v2)
+                     entropy(counter) = log(p)-gammaConstant*log(w(i,j,k,irho))
+                  end do
+               end do
+            end do
+         end do
+      end do
+
+
+   endsubroutine computeEntropy
 end module adjointAPI

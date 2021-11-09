@@ -4518,6 +4518,24 @@ class ADFLOW(AeroSolver):
         self.writeSolution(baseName=basename)
         self.setStates(states)
 
+    def plotentropy(self, aeroProblem):
+        ncells = self.adflow.adjointvars.ncellslocal[0]
+        s = numpy.zeros(ncells, float)
+        self.adflow.adjointapi.computeentropy(s)
+        nstate = self.adflow.flowvarrefstate.nw
+        plotEntropy = numpy.zeros(nstate * ncells, float)
+        counter = 0
+        for i in range(ncells):
+            for j in range(nstate):
+                plotEntropy[counter] = s[i]
+                counter = counter + 1
+        states = self.getStates()
+        basename = self.curAP.name
+        basename = basename + "_" + "_entropy"
+        self.setStates(plotEntropy)
+        self.writeSolution(baseName=basename)
+        self.setStates(states)
+
     def plotAdjoint(self, aeroProblem, objective, releaseAdjointMemory=True):
         # sets the state vector to the adjoint vector writes solution then sets states back
         self.setAeroProblem(aeroProblem, releaseAdjointMemory)
