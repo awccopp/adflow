@@ -723,7 +723,7 @@ python module libadflow
        subroutine computeentropy(entropy,ncells)
         real(kind=realtype) dimension(ncells) :: entropy
         integer(kind=inttype), optional,check(len(entropy)>=ncells),depend(entropy) :: ndimw=len(ncells)
-       endsubroutine computeentropy
+       end subroutine computeentropy
        
        end module adjointapi
        module adjointutils

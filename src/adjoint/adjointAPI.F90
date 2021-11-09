@@ -1452,7 +1452,7 @@ contains
 
    end subroutine scaleAdjoint
 
-   subroutine computeEntropy(entropy,ncells)
+   subroutine computeentropy(entropy,ncells)
       use constants
       use blockPointers, only : il, jl, kl, nDom, dw, volRef, w, gamma
       use inputTimeSpectral, only : nTimeIntervalsSpectral
@@ -1486,6 +1486,5 @@ contains
          end do
       end do
 
-
-   endsubroutine computeEntropy
+   end subroutine computeentropy
 end module adjointAPI
