@@ -720,11 +720,24 @@ python module libadflow
         integer(kind=inttype), optional,check(len(psi)>=ndimw),depend(psi) :: ndimw=len(psi)
        end subroutine scaleadjoint
 
-       subroutine computeentropy(entropy,ncells)
+       subroutine computeentropy(entropy,ncells,entropytotal)
         real(kind=realtype) dimension(ncells) :: entropy
         integer(kind=inttype), optional,check(len(entropy)>=ncells),depend(entropy) :: ndimw=len(ncells)
+        real(kind=realtype), intent(out) :: entropytotal
        end subroutine computeentropy
+                
+       subroutine computeoswatitsch(cdosw)
+           real(kind=realtype),intent(out) :: cdosw
+       end subrotuine computeoswatitsch
        
+       subroutine computemassflow(mdot)
+           real(kind=realtype),intent(out) :: mdot
+       end subrotuine computemassflow
+       
+       subroutine computeentropyflux(eflux)
+           real(kind=realtype),intent(out) :: eflux
+       end subrotuine computeentropyflux
+
        end module adjointapi
        module adjointutils
 

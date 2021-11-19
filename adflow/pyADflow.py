@@ -4518,10 +4518,10 @@ class ADFLOW(AeroSolver):
         self.writeSolution(baseName=basename)
         self.setStates(states)
 
-    def plotentropy(self, aeroProblem):
+    def plotentropy(self):
         ncells = self.adflow.adjointvars.ncellslocal[0]
         s = numpy.zeros(ncells, float)
-        self.adflow.adjointapi.computeentropy(s)
+        stot = self.adflow.adjointapi.computeentropy(s)
         nstate = self.adflow.flowvarrefstate.nw
         plotEntropy = numpy.zeros(nstate * ncells, float)
         counter = 0
@@ -4531,10 +4531,27 @@ class ADFLOW(AeroSolver):
                 counter = counter + 1
         states = self.getStates()
         basename = self.curAP.name
-        basename = basename + "_" + "_entropy"
+        basename = basename + "_" + "entropy"
         self.setStates(plotEntropy)
         self.writeSolution(baseName=basename)
         self.setStates(states)
+        stotReduced = self.comm.allreduce(stot)
+        return stotReduced
+
+    def getOswatitsch(self):
+        # cdosw = numpy.array([0.0], dtype=float)
+        cdosw = self.adflow.adjointapi.computeoswatitsch()
+        return cdosw
+
+    def getmassflow(self):
+        # cdosw = numpy.array([0.0], dtype=float)
+        mdot = self.adflow.adjointapi.computemassflow()
+        return mdot
+
+    def getEntropyFlux(self):
+        eflux = self.adflow.adjointapi.computeentropyflux()
+        return eflux
+
 
     def plotAdjoint(self, aeroProblem, objective, releaseAdjointMemory=True):
         # sets the state vector to the adjoint vector writes solution then sets states back

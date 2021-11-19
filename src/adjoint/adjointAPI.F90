@@ -1452,11 +1452,11 @@ contains
 
    end subroutine scaleAdjoint
 
-   subroutine computeentropy(entropy,ncells)
+   subroutine computeentropy(entropy,ncells,entropyTotal)
       use constants
-      use blockPointers, only : il, jl, kl, nDom, dw, volRef, w, gamma
+      use blockPointers, only : il, jl, kl, nDom, dw, volRef, w,p,iblank,kBegOr
       use inputTimeSpectral, only : nTimeIntervalsSpectral
-      use flowvarrefstate, only : nw
+      use flowvarrefstate, only : nw, RGas
       use utils, only : setPointers
       use inputPhysics
 
@@ -1464,22 +1464,29 @@ contains
 
       integer(kind=intType),intent(in):: ncells
       real(kind=realType),dimension(ncells),intent(inout) :: entropy(ncells)
+      real(kind=realtype),intent(out) :: entropyTotal
 
       ! Local Variables
-      integer(kind=intType) :: nn,i,j,k,l,counter,sps
+      integer(kind=intType) :: nn,i,j,k,l,counter,sps,diff1,diff2,diff3
       real(kind=realType) :: ovv
-      real(kind=realtype) :: gm1, v2, p 
+      real(kind=realtype) :: cv, cp,gm1
       gm1 = gammaConstant - one
+      cv = one/(gm1)*RGas
+      cp = gammaConstant*cv
       counter = 1 
+      entropyTotal = 0
       do nn=1,nDom
          do sps=1,nTimeIntervalsSpectral
             call setPointers(nn,1,sps)
             do k=2,kl
                do j=2,jl
                   do i=2,il
-                     v2 = w(i, j, k, ivx)**2 + w(i, j, k, ivy)**2 + w(i, j, k, ivz)**2
-                     p = gm1*(w(i, j, k, irhoE) - half*w( i, j, k, irho)*v2)
-                     entropy(counter) = log(p)-gammaConstant*log(w(i,j,k,irho))
+                     !v2 = w(i, j, k, ivx)**2 + w(i, j, k, ivy)**2 + w(i, j, k, ivz)**2
+                     !p = gm1*(w(i, j, k, irhoE) - half*w( i, j, k, irho)*v2)
+                     entropy(counter) = cv*log(p(i,j,k))-cp*log(w(i,j,k,irho))
+                     entropyTotal = entropyTotal + &
+                                    entropy(counter)*volRef(i,j,k)*w(i,j,k,irho)*max(real(iblank(i,j,k), realType), zero)
+                     counter = counter + 1
                   end do
                end do
             end do
@@ -1487,4 +1494,206 @@ contains
       end do
 
    end subroutine computeentropy
+
+   subroutine computeoswatitsch(cdosw)
+         use constants
+         use blockPointers, only : nDom,nBocos,bctype,BCFaceID,x ,il, jl, kl, volRef, w,p,iblank,bcdata
+         use BCPointers, only : ssi, sFace, ww1, ww2, pp1, pp2, xx, gamma1, gamma2
+         use inputTimeSpectral, only : nTimeIntervalsSpectral
+         use utils, only : setPointers, setBCPointers
+         use flowvarrefstate, only : nw, RGas, wInf, pInf,gammaInf, rhoInf, uInf
+         use inputPhysics
+         use communication, only : adflow_comm_world,myid 
+         !real(kind = realType) ,intent(out) :: cdosw
+         implicit none
+         real(kind = realType),intent(out) :: cdosw
+         integer :: ierr
+         real(kind = realType) :: cellArea, nnx, nny, nnz,vxm,vym,vzm,rhom,pm,gammam,MNm,am,vn,vmag
+         real(kind = realType) :: Minf, term1,term2,term3
+         integer(kind = inttype) :: nn,mm,ii,i,j,sps, blk
+         real(kind = realType) :: gm1,Dosw,Dosw_tot, ds, cv ,cp 
+         cdosw = five
+         gm1 = gammaInf - one
+         cv = one/(gm1)*RGas
+         cp = gammaInf*cv
+         Minf = uInf/sqrt(gammainf*pinf/rhoInf)
+         Dosw = 0
+         Dosw2 = 0 
+         do sps = 1, nTimeIntervalsSpectral
+            do nn = 1, nDom
+               call setpointers(nn,1,sps)
+               do mm = 1,nBocos
+                  call setbcpointers(mm,.True.)
+                  if (bctype(mm) == FarField) then
+                     do ii=0,(BCData(mm)%jnEnd - bcData(mm)%jnBeg)*(bcData(mm)%inEnd - bcData(mm)%inBeg) -1
+                        i = mod(ii, (bcData(mm)%inEnd-bcData(mm)%inBeg)) + bcData(mm)%inBeg + 1
+                        j = ii/(bcData(mm)%inEnd-bcData(mm)%inBeg) + bcData(mm)%jnBeg + 1
+                        blk = max(BCData(mm)%iblank(i,j), 0)
+                        cellArea = sqrt(ssi(i,j,1)**2 + ssi(i,j,2)**2 + ssi(i,j,3)**2)
+                        nnx = BCData(mm)%norm(i,j,1)
+                        nny = BCData(mm)%norm(i,j,2)
+                        nnz = BCData(mm)%norm(i,j,3)
+                        vxm = half*(ww1(i,j,ivx) + ww2(i,j,ivx))
+                        vym = half*(ww1(i,j,ivy) + ww2(i,j,ivy))
+                        vzm = half*(ww1(i,j,ivz) + ww2(i,j,ivz))
+                        rhom = half*(ww1(i,j,irho) + ww2(i,j,irho))
+                        pm = half*(pp1(i,j)+ pp2(i,j))
+                        gammam = half*(gamma1(i,j) + gamma2(i,j))
+                        am = sqrt(gammam*pm/rhom)
+                        vmag = sqrt((vxm**2 + vym**2 + vzm**2))
+                        MNm = vmag/am
+                     
+                        ! pm = pp2(i,j)
+                        ! rhom = ww2(i,j,irho)
+                        ! vxm = ww2(i,j,ivx)
+                        ! vym = ww2(i,j,ivy)
+                        ! vzm = ww2(i,j,ivz)
+
+                        vn = vxm*nnx + vym*nny + vzm*nnz
+                        ds = cv*log(pm/pInf)-cp*log(rhom/rhoInf)
+                        term1 = 2/(gm1*Minf*Minf)
+                        term2 = 1-exp((ds/cp))
+                        term3 = rhom*vn
+                        Dosw = Dosw + uinf*(1-sqrt(1+term1*term2))*term3*cellArea*blk
+                        !print *,"Hello inside loop Dosw: " ,Dosw
+                     end do 
+         
+                  end if
+               end do 
+            end do 
+         end do
+         call mpi_allreduce(Dosw, Dosw_tot, 1, adflow_real, mpi_sum, &
+             ADflow_comm_world, ierr)
+         cdosw = Dosw_tot/(half*surfaceRef*rhoInf*uInf*uInf)
+         if (myid == 0) then 
+            !print*,"counter_tot: ", counter_tot
+            !print*,"Dosw: ", Dosw_tot
+         end if 
+      end subroutine computeoswatitsch
+
+      subroutine computemassflow(mflow)
+         use constants
+         use blockPointers, only : nDom,nBocos,bctype,BCFaceID,x ,il, jl, kl, volRef, w,p,iblank,bcdata
+         use BCPointers, only : ssi, sFace, ww1, ww2, pp1, pp2, xx, gamma1, gamma2
+         use inputTimeSpectral, only : nTimeIntervalsSpectral
+         use utils, only : setPointers, setBCPointers
+         use flowvarrefstate, only : nw, RGas, wInf, pInf,gammaInf, rhoInf, uInf
+         use inputPhysics
+         use communication, only : adflow_comm_world,myid 
+         implicit none
+         !real(kind = realType) ,intent(out) :: cdosw
+         real(kind = realType),intent(out) :: mflow
+         integer :: ierr
+         real(kind = realType) :: cellArea, nnx, nny, nnz,vxm,vym,vzm,rhom,pm,gammam,MNm,am,vn,vmag
+         real(kind = realType) :: Minf, term1,term2,term3
+         integer(kind = inttype) :: nn,mm,ii,i,j,sps, blk
+         real(kind = realType) :: mflow_tot, ds, cv ,cp,gm1 
+         gm1 = gammaInf - one
+         cv = one/(gm1)*RGas
+         cp = gammaInf*cv
+         Minf = uInf/sqrt(gammainf*pinf/rhoInf)
+         mflow = 0
+         do sps = 1, nTimeIntervalsSpectral
+            do nn = 1, nDom
+               call setpointers(nn,1,sps)
+               do mm = 1,nBocos
+                  call setbcpointers(mm,.True.)
+                  if (bctype(mm) == FarField) then
+                     do ii=0,(BCData(mm)%jnEnd - bcData(mm)%jnBeg)*(bcData(mm)%inEnd - bcData(mm)%inBeg) -1
+                        i = mod(ii, (bcData(mm)%inEnd-bcData(mm)%inBeg)) + bcData(mm)%inBeg + 1
+                        j = ii/(bcData(mm)%inEnd-bcData(mm)%inBeg) + bcData(mm)%jnBeg + 1
+                        blk = max(BCData(mm)%iblank(i,j), 0)
+                        cellArea = sqrt(ssi(i,j,1)**2 + ssi(i,j,2)**2 + ssi(i,j,3)**2)
+                        nnx = BCData(mm)%norm(i,j,1)
+                        nny = BCData(mm)%norm(i,j,2)
+                        nnz = BCData(mm)%norm(i,j,3)
+                        vxm = half*(ww1(i,j,ivx) + ww2(i,j,ivx))
+                        vym = half*(ww1(i,j,ivy) + ww2(i,j,ivy))
+                        vzm = half*(ww1(i,j,ivz) + ww2(i,j,ivz))
+                        rhom = half*(ww1(i,j,irho) + ww2(i,j,irho))
+                        pm = half*(pp1(i,j)+ pp2(i,j))
+                        gammam = half*(gamma1(i,j) + gamma2(i,j))
+                        am = sqrt(gammam*pm/rhom)
+                        vmag = sqrt((vxm**2 + vym**2 + vzm**2))
+                        MNm = vmag/am
+                     
+      
+
+                        vn = vxm*nnx + vym*nny + vzm*nnz
+                        term3 = rhom*vn
+                        mflow = mflow + term3*cellArea*blk
+                     end do 
+                  end if
+               end do 
+            end do 
+         end do
+         call mpi_allreduce(mflow, mflow_tot, 1, adflow_real, mpi_sum, &
+             ADflow_comm_world, ierr)
+         mflow = mflow_tot
+         
+      end subroutine computemassflow
+
+
+
+      subroutine computeentropyFlux(eFlux)
+         use constants
+         use blockPointers, only : nDom,nBocos,bctype,BCFaceID,x ,il, jl, kl, volRef, w,p,iblank,bcdata
+         use BCPointers, only : ssi, sFace, ww1, ww2, pp1, pp2, xx, gamma1, gamma2
+         use inputTimeSpectral, only : nTimeIntervalsSpectral
+         use utils, only : setPointers, setBCPointers
+         use flowvarrefstate, only : nw, RGas, wInf, pInf,gammaInf, rhoInf, uInf
+         use inputPhysics
+         use communication, only : adflow_comm_world,myid 
+         !real(kind = realType) ,intent(out) :: cdosw
+         real(kind = realType),intent(out) :: eFlux
+         integer :: ierr
+         real(kind = realType) :: cellArea, nnx, nny, nnz,vxm,vym,vzm,rhom,pm,gammam,MNm,am,vn,vmag
+         real(kind = realType) :: Minf, term1,term2,term3
+         integer(kind = inttype) :: nn,mm,ii,i,j,sps, blk
+         real(kind = realType) ::  ds, cv ,cp,eFlux_tot 
+
+         eFlux = zero
+         gm1 = gammaInf - one
+         cv = one/(gm1)*RGas
+         cp = gammaInf*cv
+         Minf = uInf/sqrt(gammainf*pinf/rhoInf)
+         Dosw = 0
+         do sps = 1, nTimeIntervalsSpectral
+            do nn = 1, nDom
+               call setpointers(nn,1,sps)
+               do mm = 1,nBocos
+                  call setbcpointers(mm,.True.)
+                  if (bctype(mm) == FarField) then
+                     do ii=0,(BCData(mm)%jnEnd - bcData(mm)%jnBeg)*(bcData(mm)%inEnd - bcData(mm)%inBeg) -1
+                        i = mod(ii, (bcData(mm)%inEnd-bcData(mm)%inBeg)) + bcData(mm)%inBeg + 1
+                        j = ii/(bcData(mm)%inEnd-bcData(mm)%inBeg) + bcData(mm)%jnBeg + 1
+                        blk = max(BCData(mm)%iblank(i,j), 0)
+                        cellArea = sqrt(ssi(i,j,1)**2 + ssi(i,j,2)**2 + ssi(i,j,3)**2)
+                        nnx = BCData(mm)%norm(i,j,1)
+                        nny = BCData(mm)%norm(i,j,2)
+                        nnz = BCData(mm)%norm(i,j,3)
+                        vxm = half*(ww1(i,j,ivx) + ww2(i,j,ivx))
+                        vym = half*(ww1(i,j,ivy) + ww2(i,j,ivy))
+                        vzm = half*(ww1(i,j,ivz) + ww2(i,j,ivz))
+                        rhom = half*(ww1(i,j,irho) + ww2(i,j,irho))
+                        pm = half*(pp1(i,j)+ pp2(i,j))
+                        gammam = half*(gamma1(i,j) + gamma2(i,j))
+                        am = sqrt(gammam*pm/rhom)
+                        vmag = sqrt((vxm**2 + vym**2 + vzm**2))
+                        MNm = vmag/am
+                        vn = vxm*nnx + vym*nny + vzm*nnz
+                        ds = cv*log(pm)-cp*log(rhom)
+                        eFlux = eFlux  + (-ds*rhom/Rgas)*vn*cellArea*blk
+                        !print *,"Hello inside loop Dosw: " ,Dosw
+                     end do 
+                     
+                  end if
+               end do 
+            end do 
+         end do
+         call mpi_allreduce(eFlux,eFlux_tot, 1, adflow_real, mpi_sum, &
+             ADflow_comm_world, ierr)
+         eFlux = eFlux_tot
+      end subroutine computeentropyflux
+
 end module adjointAPI
