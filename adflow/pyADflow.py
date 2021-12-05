@@ -4501,6 +4501,36 @@ class ADFLOW(AeroSolver):
         else:
             return numpy.zeros(self.adflow.adjointvars.ncellslocal[0], self.dtype)
 
+    def plotFlagged(self, aeroProblem, objective, fixedfrac):
+        ncells = self.adflow.adjointvars.ncellslocal[0]
+        ncompute = self.adflow.oversetapi.computencompute()
+        nComputeTotal = self.comm.reduce(ncompute)
+        indic = self.getIndicators(aeroProblem, objective)
+        indicTotal = self.comm.gather(indic)
+        if self.comm.rank == 0:
+            indicTotal = numpy.concatenate(indicTotal)
+            sortedIndic = numpy.flip(numpy.sort(indicTotal))
+            threshold = numpy.array([sortedIndic[int(nComputeTotal * fixedfrac) - 1]])
+        else:
+            threshold = None
+        threshold = self.comm.bcast(threshold, root=0)
+        flagged = indic + 0
+        flagged[indic < threshold] = 0
+        flagged[indic >= threshold] = 10
+        nstate = self.adflow.flowvarrefstate.nw
+        plotIndic = numpy.zeros(nstate * ncells, float)
+        counter = 0
+        for i in range(ncells):
+            for j in range(nstate):
+                plotIndic[counter] = flagged[i]
+                counter = counter + 1
+        states = self.getStates()
+        basename = self.curAP.name
+        basename = basename + "_" + objective + "_flagged"
+        self.setStates(plotIndic)
+        self.writeSolution(baseName=basename)
+        self.setStates(states)
+
     def plotAdaptIndc(self, aeroProblem, objective):
         indic = self.getIndicators(aeroProblem, objective)
         ncells = self.adflow.adjointvars.ncellslocal[0]
@@ -4551,7 +4581,6 @@ class ADFLOW(AeroSolver):
     def getEntropyFlux(self):
         eflux = self.adflow.adjointapi.computeentropyflux()
         return eflux
-
 
     def plotAdjoint(self, aeroProblem, objective, releaseAdjointMemory=True):
         # sets the state vector to the adjoint vector writes solution then sets states back
