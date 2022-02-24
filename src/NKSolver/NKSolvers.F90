@@ -361,8 +361,8 @@ contains
     call mpi_allreduce(monLoc, monGlob, nMonSum, adflow_real, &
          mpi_sum, ADflow_comm_world, ierr)
 
-    rhoRes = sqrt(monGlob(1)/nCellGlobal(currentLevel))
-    totalRRes = sqrt(monGlob(2))
+    rhoRes = monGlob(1)/nCellGlobal(currentLevel)
+    totalRRes = monGlob(2)/nCellGlobal(currentLevel)
 
   end subroutine getCurrentResidual
 

@@ -4425,67 +4425,37 @@ end subroutine cross_prod
        deallocate(cgnsFamilies)
     end if
 
-    if (allocated(cgnsDomsd)) then
-       deallocate(cgnsDomsd)
-    end if
+    deallocate(cgnsDomsd)
     ! deallocate(famIDsDomainInterfaces, &
     !      bcIDsDomainInterfaces,  &
     !      famIDsSliding)
-    if (allocated(sections)) then
-       deallocate(sections)
-    end if
+    deallocate(sections)
 
-    if (allocated(BCFamExchange)) then
-      do j=1, size(BCFamExchange, 2)
-         do i=1, size(BCFamExchange, 1)
-            call destroyFamilyExchange(BCFamExchange(i,j))
-         end do
-      end do
-      deallocate(BCFamExchange)
-    end if
-    
-    if (allocated(nCellGlobal)) then
-       deallocate(nCellGlobal)
-    end if
+    do j=1, size(BCFamExchange, 2)
+       do i=1, size(BCFamExchange, 1)
+          call destroyFamilyExchange(BCFamExchange(i,j))
+       end do
+    end do
+    deallocate(BCFamExchange)
 
-    
-   ! Now deallocate the containers and communication objects.
-    if (allocated(commPatternCell_1st)) then
-      do l=1,nLevels
-         call deallocateCommType(commPatternCell_1st(l))
-      end do 
-      deallocate(commPatternCell_1st)
-    end if
-    if (allocated(commPatternCell_2nd)) then
-      do l=1,nLevels
-         call deallocateCommType(commPatternCell_2nd(l))
-      end do 
-      deallocate(commPatternCell_2nd)
-    end if
-    if (allocated(commPatternNode_1st)) then
-      do l=1,nLevels
-         call deallocateCommType(commPatternNode_1st(l))
-      end do
-      deallocate(commPatternNode_1st)
-    end if
-    if (allocated(internalCell_1st)) then
-      do l=1,nLevels
-         call deallocateInternalCommType(internalCell_1st(l))
-      end do
-      deallocate(internalCell_1st)
-    end if
-    if (allocated(internalCell_2nd)) then
-      do l=1,nLevels
-         call deallocateInternalCommType(internalCell_2nd(l))
-      end do
-      deallocate(internalCell_2nd)
-    end if
-    if (allocated(internalNode_1st)) then
-      do l=1,nLevels
-         call deallocateInternalCommType(internalNode_1st(l))
-      end do
-      deallocate(internalNode_1st)
-    end if
+    ! From Communication Stuff
+    do l=1,nLevels
+
+       call deallocateCommType(commPatternCell_1st(l))
+       call deallocateCommType(commPatternCell_2nd(l))
+       call deallocateCommType(commPatternNode_1st(l))
+
+       call deallocateInternalCommType(internalCell_1st(l))
+       call deallocateInternalCommType(internalCell_2nd(l))
+       call deallocateInternalCommType(internalNode_1st(l))
+
+    end do
+    deallocate(nCellGlobal)
+
+    ! Now deallocate the containers
+    deallocate(&
+         commPatternCell_1st, commPatternCell_2nd, commPatternNode_1st, &
+         internalCell_1st, internalCell_2nd, internalNode_1st)
 
     ! Send/recv buffer
     if (allocated(sendBuffer)) then
@@ -4497,12 +4467,7 @@ end subroutine cross_prod
     end if
 
     ! massFlow stuff from setFamilyInfoFaces.f90
-    if (allocated(massFlowFamilyInv)) then
-       deallocate(massFlowFamilyInv)
-    end if
-    if (allocated(massFlowFamilyDiss)) then
-       deallocate(massFlowFamilyDiss)
-    end if
+    deallocate(massFLowFamilyInv, massFlowFamilyDiss)
 
   end subroutine releaseMemoryPart1
 
@@ -4771,14 +4736,13 @@ end subroutine cross_prod
 
     ! Release the memory of flowDoms of the finest grid and of the
     ! array flowDoms afterwards.
-    if (allocated(flowDoms)) then
-      do sps=1,nTimeIntervalsSpectral
-         do nn=1,nDom
-            call deallocateBlock(nn, 1_intType, sps)
-         enddo
-      enddo
-      deallocate(flowDoms, stat=ierr)
-    end if 
+
+    do sps=1,nTimeIntervalsSpectral
+       do nn=1,nDom
+          call deallocateBlock(nn, 1_intType, sps)
+       enddo
+    enddo
+    deallocate(flowDoms, stat=ierr)
     if(ierr /= 0)                          &
          call terminate("releaseMemoryPart2", &
          "Deallocation failure for flowDoms")
@@ -4787,49 +4751,46 @@ end subroutine cross_prod
     ! be used in combination with adaptation.
 
     ! Destroy variables allocated in preprocessingAdjoint
-    if (adjointPETScPreProcVarsAllocated) then
-      call vecDestroy(w_like1,PETScIerr)
-      call EChk(PETScIerr, __FILE__, __LINE__)
 
-      call vecDestroy(w_like2,PETScIerr)
-      call EChk(PETScIerr, __FILE__, __LINE__)
+    call vecDestroy(w_like1,PETScIerr)
+    call EChk(PETScIerr, __FILE__, __LINE__)
 
-      call vecDestroy(psi_like1,PETScIerr)
-      call EChk(PETScIerr, __FILE__, __LINE__)
+    call vecDestroy(w_like2,PETScIerr)
+    call EChk(PETScIerr, __FILE__, __LINE__)
 
-      call vecDestroy(psi_like2,PETScIerr)
-      call EChk(PETScIerr, __FILE__, __LINE__)
+    call vecDestroy(psi_like1,PETScIerr)
+    call EChk(PETScIerr, __FILE__, __LINE__)
 
-      call vecDestroy(psi_like3,PETScIerr)
-      call EChk(PETScIerr, __FILE__, __LINE__)
+    call vecDestroy(psi_like2,PETScIerr)
+    call EChk(PETScIerr, __FILE__, __LINE__)
 
-      call vecDestroy(x_like,PETScIerr)
-      call EChk(PETScIerr, __FILE__, __LINE__)
-    end if
+    call vecDestroy(psi_like3,PETScIerr)
+    call EChk(PETScIerr, __FILE__, __LINE__)
+
+    call vecDestroy(x_like,PETScIerr)
+    call EChk(PETScIerr, __FILE__, __LINE__)
 
     ! Finally delete cgnsDoms...but there is still more
     ! pointers that need to be deallocated...
-    if (allocated(cgnsDoms)) then
-      do nn=1,cgnsNDom
-         if (associated(cgnsDoms(nn)%procStored)) &
-               deallocate(cgnsDoms(nn)%procStored)
+    do nn=1,cgnsNDom
+       if (associated(cgnsDoms(nn)%procStored)) &
+            deallocate(cgnsDoms(nn)%procStored)
 
-         if (associated(cgnsDoms(nn)%conn1to1)) &
-               deallocate(cgnsDoms(nn)%conn1to1)
+       if (associated(cgnsDoms(nn)%conn1to1)) &
+            deallocate(cgnsDoms(nn)%conn1to1)
 
-         if (associated(cgnsDoms(nn)%connNonMatchAbutting)) &
-               deallocate(cgnsDoms(nn)%connNonMatchAbutting)
+       if (associated(cgnsDoms(nn)%connNonMatchAbutting)) &
+            deallocate(cgnsDoms(nn)%connNonMatchAbutting)
 
-         if (associated(cgnsDoms(nn)%bocoInfo)) &
-               deallocate(cgnsDoms(nn)%bocoInfo)
+       if (associated(cgnsDoms(nn)%bocoInfo)) &
+            deallocate(cgnsDoms(nn)%bocoInfo)
 
-         deallocate(&
-               cgnsDoms(nn)%iBegOr, cgnsDoms(nn)%iEndOr, &
-               cgnsDoms(nn)%jBegOr, cgnsDoms(nn)%jEndOr, &
-               cgnsDoms(nn)%kBegOr, cgnsDoms(nn)%kEndOr, &
-               cgnsDoms(nn)%localBlockID)
-      end do
-   end if
+       deallocate(&
+            cgnsDoms(nn)%iBegOr, cgnsDoms(nn)%iEndOr, &
+            cgnsDoms(nn)%jBegOr, cgnsDoms(nn)%jEndOr, &
+            cgnsDoms(nn)%kBegOr, cgnsDoms(nn)%kEndOr, &
+            cgnsDoms(nn)%localBlockID)
+    end do
 
   end subroutine releaseMemoryPart2
 
@@ -6324,7 +6285,7 @@ end subroutine cross_prod
        do j=2,jl
           do i=2,il
 #ifndef USE_COMPLEX
-             monLoc(mm) = monLoc(mm) + (dw(i,j,k,nn)/vol(i,j,k))**2
+             monLoc(mm) = monLoc(mm) + abs(dw(i,j,k,nn))
 #else
             ! TODO squaring the complex residual when its order 1e-200 underflows and we need a better approach here
             ! we need to square and sum the real and complex parts separately
@@ -6369,7 +6330,7 @@ end subroutine cross_prod
              ovv = one/vol(i,j,k)
              do l=1,nwf
 #ifndef USE_COMPLEX
-                state_sum = state_sum + (dw(i,j,k,l)*ovv)**2
+                state_sum = state_sum + abs(dw(i,j,k,l))
 #else
                ! TODO squaring the complex residual when its order 1e-200 underflows and we need a better approach here
                 ! we need to square and sum the real and complex parts separately
@@ -6381,7 +6342,7 @@ end subroutine cross_prod
              do l=nt1,nt2
                ! l-nt1+1 will index the turbResScale properly
 #ifndef USE_COMPLEX
-               state_sum = state_sum + (dw(i,j,k,l)*ovv*turbResScale(l-nt1+1))**2
+               state_sum = state_sum + abs(dw(i,j,k,l)*turbResScale(l-nt1+1))
 #else
                ! we need to square and sum the real and complex parts separately
                state_sum = state_sum + &
@@ -6416,7 +6377,7 @@ end subroutine cross_prod
 
     write(integerString,"(i7)") timeStepUnsteady + &
          nTimeStepsRestart
-    write(realString,"(es12.5)") timeUnsteady + &
+    write(realString,"(e12.5)") timeUnsteady + &
          timeUnsteadyRestart
 
     integerString = adjustl(integerString)

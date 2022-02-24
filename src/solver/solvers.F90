@@ -974,6 +974,7 @@ contains
           freeStreamResSet = .True.
        end if
     end if
+    totalR0 = 1
     ! Write a message. Only done by processor 0.
 
     if(myID == 0) then
@@ -1651,7 +1652,7 @@ contains
              end if
           case ('totalR')
 #ifndef USE_COMPLEX
-             monGlob(mm) = sqrt(monGlob(mm))
+             monGlob(mm) = monGlob(mm)/nCellGlobal(currentLevel)
 #else
              ! take the square roots separately in complex mode
              monGlob(mm) = cmplx(sqrt(real(monGlob(mm))), sqrt(aimag(monGlob(mm))))
