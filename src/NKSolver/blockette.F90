@@ -1913,7 +1913,7 @@ contains
         use blockPointers, only: sectionID
         use flowvarRefState, only: pInfCorr, rhoInf, gammaInf, viscous, timeRef
         use inputPhysics, only: equationMode
-        use inputDiscretization, only: adis
+        use inputDiscretization, only: adis, acousticScaleFactor
         use section, only: sections
         use inputTimeSpectral, only: nTimeIntervalsSpectral
 
@@ -1988,7 +1988,7 @@ contains
                     qsi = uux * sx + uuy * sy + uuz * sz - sFace
 
                     ri = half * (abs(qsi) &
-                                 + sqrt(cc2 * (sx**2 + sy**2 + sz**2)))
+                                 + acousticScaleFactor * sqrt(cc2 * (sx**2 + sy**2 + sz**2)))
 
                     ! The grid velocity in j-direction.
                     sFace = sFaceJ(i, j - 1, k) + sFaceJ(i, j, k)
@@ -2002,7 +2002,7 @@ contains
                     qsj = uux * sx + uuy * sy + uuz * sz - sFace
 
                     rj = half * (abs(qsj) &
-                                 + sqrt(cc2 * (sx**2 + sy**2 + sz**2)))
+                                 + acousticScaleFactor * sqrt(cc2 * (sx**2 + sy**2 + sz**2)))
 
                     ! The grid velocity in k-direction.
                     sFace = sFaceK(i, j, k - 1) + sFaceK(i, j, k)
@@ -2016,7 +2016,7 @@ contains
                     qsk = uux * sx + uuy * sy + uuz * sz - sFace
 
                     rk = half * (abs(qsk) &
-                                 + sqrt(cc2 * (sx**2 + sy**2 + sz**2)))
+                                 + acousticScaleFactor * sqrt(cc2 * (sx**2 + sy**2 + sz**2)))
 
                     ! Store in tdl if required
                     if (updateDt) then
@@ -3042,8 +3042,9 @@ contains
         use constants
         use flowVarRefState, only: pInfCorr
         use inputDiscretization, only: vis2, vis4
+        use inputIteration, only: useDissContinuation, dissContMagnitude, dissContMidpoint, dissContSharpness
         use inputPhysics, only: equations
-        use iteration, only: rFil
+        use iteration, only: rFil, totalR0, totalR
         use flowVarRefState, only: gammaInf, pInfCorr, rhoInf
         implicit none
 
@@ -3111,9 +3112,23 @@ contains
             end do
         end do
 
-        ! Set a couple of constants for the scheme.
+        ! Set the dissipation constants for the scheme.
+        ! rFil and sFil are fractions used by the Runge-Kutta solver to compute residuals at intermediate steps.
+        ! For the blockette code, rFil is always one, so sFil==0, fis2==vis2, and fis4==vis4.
 
-        fis2 = rFil * vis2
+        ! The sigmoid function used for dissipation-based continuation is described in Eq. 28 and Eq. 29 from the paper:
+        ! "Improving the Performance of a Compressible RANS Solver for Low and High Mach Number Flows" (Seraj2022c).
+        ! The options documentation also has information on the parameters in this formulation.
+        if (useDissContinuation) then
+            if (totalR == zero .or. totalR0 == zero) then
+                fis2 = rFil * (vis2 + dissContMagnitude / (1 + exp(-dissContSharpness * dissContMidpoint)))
+            else
+                fis2 = rFil * (vis2 + dissContMagnitude / &
+                               (1 + exp(-dissContSharpness * (log10(totalR / totalR0) + dissContMidpoint))))
+            end if
+        else
+            fis2 = rFil * vis2
+        end if
         fis4 = rFil * vis4
         sfil = one - rFil
 
@@ -3153,7 +3168,8 @@ contains
 
                     ddw2 = w(i + 1, j, k, ivx) * w(i + 1, j, k, irho) - w(i, j, k, ivx) * w(i, j, k, irho)
                     fs = dis2 * ddw2 &
-       - dis4 * (w(i + 2, j, k, ivx) * w(i + 2, j, k, irho) - w(i - 1, j, k, ivx) * w(i - 1, j, k, irho) - three * ddw2)
+                         - dis4 * (w(i + 2, j, k, ivx) * w(i + 2, j, k, irho) - &
+                                   w(i - 1, j, k, ivx) * w(i - 1, j, k, irho) - three * ddw2)
 
                     fw(i + 1, j, k, imx) = fw(i + 1, j, k, imx) + fs
                     fw(i, j, k, imx) = fw(i, j, k, imx) - fs
@@ -3162,7 +3178,8 @@ contains
 
                     ddw3 = w(i + 1, j, k, ivy) * w(i + 1, j, k, irho) - w(i, j, k, ivy) * w(i, j, k, irho)
                     fs = dis2 * ddw3 &
-       - dis4 * (w(i + 2, j, k, ivy) * w(i + 2, j, k, irho) - w(i - 1, j, k, ivy) * w(i - 1, j, k, irho) - three * ddw3)
+                         - dis4 * (w(i + 2, j, k, ivy) * w(i + 2, j, k, irho) - &
+                                   w(i - 1, j, k, ivy) * w(i - 1, j, k, irho) - three * ddw3)
 
                     fw(i + 1, j, k, imy) = fw(i + 1, j, k, imy) + fs
                     fw(i, j, k, imy) = fw(i, j, k, imy) - fs
@@ -3171,7 +3188,8 @@ contains
 
                     ddw4 = w(i + 1, j, k, ivz) * w(i + 1, j, k, irho) - w(i, j, k, ivz) * w(i, j, k, irho)
                     fs = dis2 * ddw4 &
-       - dis4 * (w(i + 2, j, k, ivz) * w(i + 2, j, k, irho) - w(i - 1, j, k, ivz) * w(i - 1, j, k, irho) - three * ddw4)
+                         - dis4 * (w(i + 2, j, k, ivz) * w(i + 2, j, k, irho) - &
+                                   w(i - 1, j, k, ivz) * w(i - 1, j, k, irho) - three * ddw4)
 
                     fw(i + 1, j, k, imz) = fw(i + 1, j, k, imz) + fs
                     fw(i, j, k, imz) = fw(i, j, k, imz) - fs
@@ -3180,7 +3198,8 @@ contains
 
                     ddw5 = (w(i + 1, j, k, irhoE) + P(i + 1, j, K)) - (w(i, j, k, irhoE) + P(i, j, k))
                     fs = dis2 * ddw5 &
-           - dis4 * ((w(i + 2, j, k, irhoE) + P(i + 2, j, k)) - (w(i - 1, j, k, irhoE) + P(i - 1, j, k)) - three * ddw5)
+                         - dis4 * ((w(i + 2, j, k, irhoE) + P(i + 2, j, k)) - &
+                                   (w(i - 1, j, k, irhoE) + P(i - 1, j, k)) - three * ddw5)
 
                     fw(i + 1, j, k, irhoE) = fw(i + 1, j, k, irhoE) + fs
                     fw(i, j, k, irhoE) = fw(i, j, k, irhoE) - fs
@@ -3218,7 +3237,8 @@ contains
 
                     ddw2 = w(i, j + 1, k, ivx) * w(i, j + 1, k, irho) - w(i, j, k, ivx) * w(i, j, k, irho)
                     fs = dis2 * ddw2 &
-       - dis4 * (w(i, j + 2, k, ivx) * w(i, j + 2, k, irho) - w(i, j - 1, k, ivx) * w(i, j - 1, k, irho) - three * ddw2)
+                         - dis4 * (w(i, j + 2, k, ivx) * w(i, j + 2, k, irho) - &
+                                   w(i, j - 1, k, ivx) * w(i, j - 1, k, irho) - three * ddw2)
 
                     fw(i, j + 1, k, imx) = fw(i, j + 1, k, imx) + fs
                     fw(i, j, k, imx) = fw(i, j, k, imx) - fs
@@ -3227,7 +3247,8 @@ contains
 
                     ddw3 = w(i, j + 1, k, ivy) * w(i, j + 1, k, irho) - w(i, j, k, ivy) * w(i, j, k, irho)
                     fs = dis2 * ddw3 &
-       - dis4 * (w(i, j + 2, k, ivy) * w(i, j + 2, k, irho) - w(i, j - 1, k, ivy) * w(i, j - 1, k, irho) - three * ddw3)
+                         - dis4 * (w(i, j + 2, k, ivy) * w(i, j + 2, k, irho) - &
+                                   w(i, j - 1, k, ivy) * w(i, j - 1, k, irho) - three * ddw3)
 
                     fw(i, j + 1, k, imy) = fw(i, j + 1, k, imy) + fs
                     fw(i, j, k, imy) = fw(i, j, k, imy) - fs
@@ -3236,7 +3257,8 @@ contains
 
                     ddw4 = w(i, j + 1, k, ivz) * w(i, j + 1, k, irho) - w(i, j, k, ivz) * w(i, j, k, irho)
                     fs = dis2 * ddw4 &
-       - dis4 * (w(i, j + 2, k, ivz) * w(i, j + 2, k, irho) - w(i, j - 1, k, ivz) * w(i, j - 1, k, irho) - three * ddw4)
+                         - dis4 * (w(i, j + 2, k, ivz) * w(i, j + 2, k, irho) - &
+                                   w(i, j - 1, k, ivz) * w(i, j - 1, k, irho) - three * ddw4)
 
                     fw(i, j + 1, k, imz) = fw(i, j + 1, k, imz) + fs
                     fw(i, j, k, imz) = fw(i, j, k, imz) - fs
@@ -3245,7 +3267,8 @@ contains
 
                     ddw5 = (w(i, j + 1, k, irhoE) + P(i, j + 1, k)) - (w(i, j, k, irhoE) + P(i, j, k))
                     fs = dis2 * ddw5 &
-           - dis4 * ((w(i, j + 2, k, irhoE) + P(i, j + 2, k)) - (w(i, j - 1, k, irhoE) + P(i, j - 1, k)) - three * ddw5)
+                         - dis4 * ((w(i, j + 2, k, irhoE) + P(i, j + 2, k)) - &
+                                   (w(i, j - 1, k, irhoE) + P(i, j - 1, k)) - three * ddw5)
 
                     fw(i, j + 1, k, irhoE) = fw(i, j + 1, k, irhoE) + fs
                     fw(i, j, k, irhoE) = fw(i, j, k, irhoE) - fs
@@ -3283,7 +3306,8 @@ contains
 
                     ddw2 = w(i, j, k + 1, ivx) * w(i, j, k + 1, irho) - w(i, j, k, ivx) * w(i, j, k, irho)
                     fs = dis2 * ddw2 &
-       - dis4 * (w(i, j, k + 2, ivx) * w(i, j, k + 2, irho) - w(i, j, k - 1, ivx) * w(i, j, k - 1, irho) - three * ddw2)
+                         - dis4 * (w(i, j, k + 2, ivx) * w(i, j, k + 2, irho) - &
+                                   w(i, j, k - 1, ivx) * w(i, j, k - 1, irho) - three * ddw2)
 
                     fw(i, j, k + 1, imx) = fw(i, j, k + 1, imx) + fs
                     fw(i, j, k, imx) = fw(i, j, k, imx) - fs
@@ -3292,7 +3316,8 @@ contains
 
                     ddw3 = w(i, j, k + 1, ivy) * w(i, j, k + 1, irho) - w(i, j, k, ivy) * w(i, j, k, irho)
                     fs = dis2 * ddw3 &
-       - dis4 * (w(i, j, k + 2, ivy) * w(i, j, k + 2, irho) - w(i, j, k - 1, ivy) * w(i, j, k - 1, irho) - three * ddw3)
+                         - dis4 * (w(i, j, k + 2, ivy) * w(i, j, k + 2, irho) - &
+                                   w(i, j, k - 1, ivy) * w(i, j, k - 1, irho) - three * ddw3)
 
                     fw(i, j, k + 1, imy) = fw(i, j, k + 1, imy) + fs
                     fw(i, j, k, imy) = fw(i, j, k, imy) - fs
@@ -3301,7 +3326,8 @@ contains
 
                     ddw4 = w(i, j, k + 1, ivz) * w(i, j, k + 1, irho) - w(i, j, k, ivz) * w(i, j, k, irho)
                     fs = dis2 * ddw4 &
-       - dis4 * (w(i, j, k + 2, ivz) * w(i, j, k + 2, irho) - w(i, j, k - 1, ivz) * w(i, j, k - 1, irho) - three * ddw4)
+                         - dis4 * (w(i, j, k + 2, ivz) * w(i, j, k + 2, irho) - &
+                                   w(i, j, k - 1, ivz) * w(i, j, k - 1, irho) - three * ddw4)
 
                     fw(i, j, k + 1, imz) = fw(i, j, k + 1, imz) + fs
                     fw(i, j, k, imz) = fw(i, j, k, imz) - fs
@@ -3310,7 +3336,8 @@ contains
 
                     ddw5 = (w(i, j, k + 1, irhoE) + P(i, j, k + 1)) - (w(i, j, k, irhoE) + P(i, j, k))
                     fs = dis2 * ddw5 &
-           - dis4 * ((w(i, j, k + 2, irhoE) + P(i, j, k + 2)) - (w(i, j, k - 1, irhoE) + P(i, j, k - 1)) - three * ddw5)
+                         - dis4 * ((w(i, j, k + 2, irhoE) + P(i, j, k + 2)) - &
+                                   (w(i, j, k - 1, irhoE) + P(i, j, k - 1)) - three * ddw5)
 
                     fw(i, j, k + 1, irhoE) = fw(i, j, k + 1, irhoE) + fs
                     fw(i, j, k, irhoE) = fw(i, j, k, irhoE) - fs
@@ -4353,8 +4380,9 @@ contains
         use constants
         use flowVarRefState, only: pInfCorr
         use inputDiscretization, only: vis2, vis4, sigma
+        use inputIteration, only: useDissContinuation, dissContMagnitude, dissContMidpoint, dissContSharpness
         use inputPhysics, only: equations
-        use iteration, only: rFil
+        use iteration, only: rFil, totalR0, totalR
         use flowVarRefState, only: gammaInf, pInfCorr, rhoInf
         implicit none
 
@@ -4404,9 +4432,21 @@ contains
             end do
         end do
 
-        ! Set a couple of constants for the scheme.
-        fis2 = vis2
+        ! Set the dissipation constants for the scheme.
+        ! rFil and sFil are fractions used by the Runge-Kutta solver to compute residuals at intermediate steps.
+        ! For the blockette code, rFil is always one, so sFil==0, fis2==vis2, and fis4==vis4.
+
+        ! The sigmoid function used for dissipation-based continuation is described in Eq. 28 and Eq. 29 from the paper:
+        ! "Improving the Performance of a Compressible RANS Solver for Low and High Mach Number Flows" (Seraj2022c).
+        ! The options documentation also has information on the parameters in this formulation.
+        if (useDissContinuation) then
+            fis2 = vis2 + dissContMagnitude / &
+                   (1 + exp(-dissContSharpness * (log10(totalR / totalR0) + dissContMidpoint)))
+        else
+            fis2 = vis2
+        end if
         fis4 = vis4
+
         !
         !       Dissipative fluxes in the i-direction.
         !
