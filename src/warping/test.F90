@@ -1,342 +1,341 @@
 subroutine test(speed1, speed2, block_size)
 
-  use constants
-  use blockPointers, only : bnx=>nx, bny=>ny, bnz=>nz, &
-       bil=>il, bjl=>jl, bkl=>kl, &
-       bie=>ie, bje=>je, bke=>ke, &
-       bib=>ib, bjb=>jb, bkb=>kb, &
-       bw=>w, bp=>p, bgamma=>gamma, &
-       bx=>x, brlv=>rlv, brev=>rev, bvol=>vol, bVolRef=>volRef, bd2wall=>d2wall, &
-       biblank=>iblank, bPorI=>porI, bPorJ=>porJ, bPorK=>porK, bdw=>dw, bfw=>fw
-  use utils
-  use block
-  use surfaceFamilies, only : fullFamList
-  use flowVarRefState
-  use communication, only : myid, adflow_comm_world
-  use blockette, only : blocketteRes, BS
-  use inputDiscretization, only : useBlockettes
-  implicit none
+    use constants
+    use blockPointers, only: bnx => nx, bny => ny, bnz => nz, &
+                             bil => il, bjl => jl, bkl => kl, &
+                             bie => ie, bje => je, bke => ke, &
+                             bib => ib, bjb => jb, bkb => kb, &
+                             bw => w, bp => p, bgamma => gamma, &
+                             bx => x, brlv => rlv, brev => rev, bvol => vol, bVolRef => volRef, bd2wall => d2wall, &
+                             biblank => iblank, bPorI => porI, bPorJ => porJ, bPorK => porK, bdw => dw, bfw => fw
+    use utils
+    use block
+    use surfaceFamilies, only: fullFamList
+    use flowVarRefState
+    use communication, only: myid, adflow_comm_world
+    use blockette, only: blocketteRes, BS
+    use inputDiscretization, only: useBlockettes
+    implicit none
 
-  real(kind=realType), intent(out) :: speed1, speed2
-  integer(kind=intType), intent(out) :: block_size
+    real(kind=realType), intent(out) :: speed1, speed2
+    integer(kind=intType), intent(out) :: block_size
 
-  ! Misc
-  integer(kind=intType) :: i, j, k, l, iSize, nn, nIter, ii,jj,kk, iiter, loopCount, ierr
-  real(kind=realType) ::  timeA, timeB, tmp, tmp2, norm
-  integer(kind=intType) :: omp_get_thread_num
-  logical :: useBlockettesSave
-  logical :: updateVars
+    ! Misc
+    integer(kind=intType) :: i, j, k, l, iSize, nn, nIter, ii, jj, kk, iiter, loopCount, ierr
+    real(kind=realType) :: timeA, timeB, tmp, tmp2, norm
+    integer(kind=intType) :: omp_get_thread_num
+    logical :: useBlockettesSave
+    logical :: updateVars
 
-  ! First call the residual routine to update all intermed. variables
-  call blocketteRes(useUpdateDt=.True.)
+    ! First call the residual routine to update all intermed. variables
+    call blocketteRes(useUpdateDt=.True.)
 
-  ! Disable blockette code for the first run
-  useBlockettesSave = useBlockettes
-  useBlockettes = .False.
+    ! Disable blockette code for the first run
+    useBlockettesSave = useBlockettes
+    useBlockettes = .False.
 
-  niter = 5
-  block_size = BS
-  call mpi_barrier(adflow_comm_world, ierr)
-  timeA = mpi_wtime()
+    niter = 5
+    block_size = BS
+    call mpi_barrier(adflow_comm_world, ierr)
+    timeA = mpi_wtime()
 
-  do i=1, nIter
-     ! Call blockette code without vectorized routines
-     call blocketteRes(useUpdateDt=.True., useUpdateVars=updateVars)
-  end do
-  call mpi_barrier(adflow_comm_world, ierr)
-  timeB = mpi_wtime()
+    do i = 1, nIter
+        ! Call blockette code without vectorized routines
+        call blocketteRes(useUpdateDt=.True., useUpdateVars=updateVars)
+    end do
+    call mpi_barrier(adflow_comm_world, ierr)
+    timeB = mpi_wtime()
 
-  iSize = 0
-  do nn=1, nDom
-     call setPointers(nn, 1, 1)
-     iSize = iSize + bnx*bny*bnz
-     !print *,'dw:', dw(2,2,2,1), dw(2,2,2,6)
-     !print *, 'sum:', myid, sum(bdw(2:bil, 2:bjl, 2:bkl, 1:nw))
-  end do
+    iSize = 0
+    do nn = 1, nDom
+        call setPointers(nn, 1, 1)
+        iSize = iSize + bnx * bny * bnz
+        !print *,'dw:', dw(2,2,2,1), dw(2,2,2,6)
+        !print *, 'sum:', myid, sum(bdw(2:bil, 2:bjl, 2:bkl, 1:nw))
+    end do
 
-  speed1 = iSize*nIter/(timeB-timeA)/1e6
+    speed1 = iSize * nIter / (timeB - timeA) / 1e6
 
-  call calcResNorm(norm)
+    call calcResNorm(norm)
 
-  if (myid == 0) then
-    print *,'speed1:', speed1, timeB-timeA, 0, isize, norm ,bnx, bny, bnz
-  end if
+    if (myid == 0) then
+        print *, 'speed1:', speed1, timeB - timeA, 0, isize, norm, bnx, bny, bnz
+    end if
 
-  ! Enable the vectorized code for the second run
-  useBlockettes = .True.
+    ! Enable the vectorized code for the second run
+    useBlockettes = .True.
 
-  call mpi_barrier(adflow_comm_world, ierr)
-  ! Test the blockette code
-  timeA = mpi_wtime()
-  do i=1, nIter
-     ! Call blockette code with vectorized routines
-     call blocketteRes(useUpdateDt=.True., useUpdateVars=updateVars)
-  end do
-  call mpi_barrier(adflow_comm_world, ierr)
-  timeB = mpi_wtime()
+    call mpi_barrier(adflow_comm_world, ierr)
+    ! Test the blockette code
+    timeA = mpi_wtime()
+    do i = 1, nIter
+        ! Call blockette code with vectorized routines
+        call blocketteRes(useUpdateDt=.True., useUpdateVars=updateVars)
+    end do
+    call mpi_barrier(adflow_comm_world, ierr)
+    timeB = mpi_wtime()
 
-  !print *,'dw:', dw(2,2,2,1), dw(2,2,2,6)
-  !print *, 'sum:', myid, sum(bdw(2:bil, 2:bjl, 2:bkl, 1:nw))
+    !print *,'dw:', dw(2,2,2,1), dw(2,2,2,6)
+    !print *, 'sum:', myid, sum(bdw(2:bil, 2:bjl, 2:bkl, 1:nw))
 
-  speed2 = iSize*nIter/(timeB-timeA)/1e6
-  call calcResNorm(norm)
+    speed2 = iSize * nIter / (timeB - timeA) / 1e6
+    call calcResNorm(norm)
 
-  if (myid == 0) then
-    print *,'speed2:',speed2 , timeB-timeA, loopCount, isize, norm, BS
-  end if
-  !print *, 'loop count:', loopCount, il, jl, kl
+    if (myid == 0) then
+        print *, 'speed2:', speed2, timeB - timeA, loopCount, isize, norm, BS
+    end if
+    !print *, 'loop count:', loopCount, il, jl, kl
 
-  ! Restore the useBlockettes option
-  useBlockettes = useBlockettesSave
+    ! Restore the useBlockettes option
+    useBlockettes = useBlockettesSave
 
 end subroutine test
 
 subroutine test_b(speed1, speed2, block_size)
 
-  use constants
-  use blockPointers, only : bnx=>nx, bny=>ny, bnz=>nz, &
-       bil=>il, bjl=>jl, bkl=>kl, &
-       bie=>ie, bje=>je, bke=>ke, &
-       bib=>ib, bjb=>jb, bkb=>kb, &
-       bw=>w, bp=>p, bgamma=>gamma, &
-       bx=>x, brlv=>rlv, brev=>rev, bvol=>vol, bVolRef=>volRef, bd2wall=>d2wall, &
-       biblank=>iblank, bPorI=>porI, bPorJ=>porJ, bPorK=>porK, bdw=>dw, bfw=>fw
-  use utils
-  use block
-  use surfaceFamilies, only : fullFamList
-  use flowVarRefState
-  use communication, only : myid, adflow_comm_world
-  use blockette, only : blocketteRes, BS
-  use inputDiscretization, only : useBlockettes
-  use adjointAPI, only : computeMatrixFreeProductBwdFast
-  use ADjointVars , only: nCellsLocal
+    use constants
+    use blockPointers, only: bnx => nx, bny => ny, bnz => nz, &
+                             bil => il, bjl => jl, bkl => kl, &
+                             bie => ie, bje => je, bke => ke, &
+                             bib => ib, bjb => jb, bkb => kb, &
+                             bw => w, bp => p, bgamma => gamma, &
+                             bx => x, brlv => rlv, brev => rev, bvol => vol, bVolRef => volRef, bd2wall => d2wall, &
+                             biblank => iblank, bPorI => porI, bPorJ => porJ, bPorK => porK, bdw => dw, bfw => fw
+    use utils
+    use block
+    use surfaceFamilies, only: fullFamList
+    use flowVarRefState
+    use communication, only: myid, adflow_comm_world
+    use blockette, only: blocketteRes, BS
+    use inputDiscretization, only: useBlockettes
+    use adjointAPI, only: computeMatrixFreeProductBwdFast
+    use ADjointVars, only: nCellsLocal
 #include <petscversion.h>
 #if PETSC_VERSION_GE(3,8,0)
 #include <petsc/finclude/petsc.h>
-  use petsc
-  implicit none
+    use petsc
+    implicit none
 #else
-  implicit none
+    implicit none
 #define PETSC_AVOID_MPIF_H
 #include "petsc/finclude/petsc.h"
 #include "petsc/finclude/petscvec.h90"
 #endif
 
-  Vec vecX, vecY
+    Vec vecX, vecY
 
+    real(kind=realType), intent(out) :: speed1, speed2
+    integer(kind=intType), intent(out) :: block_size
 
-  real(kind=realType), intent(out) :: speed1, speed2
-  integer(kind=intType), intent(out) :: block_size
+    ! Misc
+    integer(kind=intType) :: i, j, k, l, iSize, nn, nIter, ii, jj, kk, iiter, loopCount, sps
+    real(kind=realType) :: timeA, timeB, tmp, tmp2, norm
+    integer(kind=intType) :: omp_get_thread_num
+    logical :: useBlockettesSave
+    logical :: updateVars
 
-  ! Misc
-  integer(kind=intType) :: i, j, k, l, iSize, nn, nIter, ii,jj,kk, iiter, loopCount, sps
-  real(kind=realType) ::  timeA, timeB, tmp, tmp2, norm
-  integer(kind=intType) :: omp_get_thread_num
-  logical :: useBlockettesSave
-  logical :: updateVars
+    integer(kind=intType) :: ierr, nDimW
 
-  integer(kind=intType) ::ierr, nDimW
+    real(kind=realType), pointer :: dwb_pointer(:)
+    real(kind=realType), pointer :: wb_pointer(:)
 
-  real(kind=realType), pointer :: dwb_pointer(:)
-  real(kind=realType), pointer :: wb_pointer(:)
+    ! First call the residual routine to update all intermed. variables
+    call blocketteRes(useUpdateDt=.True.)
 
-  ! First call the residual routine to update all intermed. variables
-  call blocketteRes(useUpdateDt=.True.)
+    ! We need to create a dummy AD seed, and an output vector to read the output
+    nDimW = nw * nCellsLocal(1_intTYpe) * 1_intType
 
-  ! We need to create a dummy AD seed, and an output vector to read the output
-  nDimW = nw * nCellsLocal(1_intTYpe) * 1_intType
+    ! print *,nDimW
 
-  ! print *,nDimW
+    ! create dummy arrays
+    call VecCreate(ADFLOW_COMM_WORLD, vecX, ierr)
+    call EChk(ierr, __FILE__, __LINE__)
 
-  ! create dummy arrays
-  call VecCreate(ADFLOW_COMM_WORLD, vecX, ierr)
-  call EChk(ierr, __FILE__, __LINE__)
+    call VecSetSizes(vecX, nDimW, PETSC_DECIDE, ierr)
+    call EChk(ierr, __FILE__, __LINE__)
 
-  call VecSetSizes(vecX, nDimW, PETSC_DECIDE, ierr)
-  call EChk(ierr, __FILE__, __LINE__)
+    call VecSetBlockSize(vecX, nw, ierr)
+    call EChk(ierr, __FILE__, __LINE__)
 
-  call VecSetBlockSize(vecX, nw, ierr)
-  call EChk(ierr, __FILE__, __LINE__)
+    call VecSetType(vecX, VECMPI, ierr)
+    call EChk(ierr, __FILE__, __LINE__)
 
-  call VecSetType(vecX, VECMPI, ierr)
-  call EChk(ierr, __FILE__, __LINE__)
+    !  Create duplicates
+    call VecDuplicate(vecX, vecY, ierr)
+    call EChk(ierr, __FILE__, __LINE__)
 
-  !  Create duplicates
-  call VecDuplicate(vecX, vecY, ierr)
-  call EChk(ierr, __FILE__, __LINE__)
+    ! copy the residual to dwbar
+    call VecGetArrayF90(vecX, dwb_pointer, ierr)
+    call EChk(ierr, __FILE__, __LINE__)
 
-  ! copy the residual to dwbar
-  call VecGetArrayF90(vecX, dwb_pointer, ierr)
-  call EChk(ierr,__FILE__,__LINE__)
+    ! print *,'setting the dummy seeds'
 
-  ! print *,'setting the dummy seeds'
-
-  ii = 0
-  do nn=1,nDom
-    call setPointers_d(nn, 1, 1)
-    do k=2, bkl
-       do j=2, bjl
-          do i=2, bil
-             do l=1, 6
-                ii = ii + 1
-                ! print *, i,j,k,l,ii, bdw(i,j,k,l)
-                dwb_pointer(ii) = bdw(i, j, k, l)
-             end do
-          end do
-       end do
+    ii = 0
+    do nn = 1, nDom
+        call setPointers_d(nn, 1, 1)
+        do k = 2, bkl
+            do j = 2, bjl
+                do i = 2, bil
+                    do l = 1, 6
+                        ii = ii + 1
+                        ! print *, i,j,k,l,ii, bdw(i,j,k,l)
+                        dwb_pointer(ii) = bdw(i, j, k, l)
+                    end do
+                end do
+            end do
+        end do
     end do
-  end do
 
-  ! print *,'flag1'
+    ! print *,'flag1'
 
-  call VecRestoreArrayF90(Vecx, dwb_pointer, ierr)
-  call EChk(ierr,__FILE__,__LINE__)
+    call VecRestoreArrayF90(Vecx, dwb_pointer, ierr)
+    call EChk(ierr, __FILE__, __LINE__)
 
-  ! now we can run tests like the usual code
-  call VecGetArrayReadF90(vecX, dwb_pointer, ierr)
-  call EChk(ierr,__FILE__,__LINE__)
+    ! now we can run tests like the usual code
+    call VecGetArrayReadF90(vecX, dwb_pointer, ierr)
+    call EChk(ierr, __FILE__, __LINE__)
 
-  call VecGetArrayF90(VecY, wb_pointer, ierr)
-  call EChk(ierr,__FILE__,__LINE__)
+    call VecGetArrayF90(VecY, wb_pointer, ierr)
+    call EChk(ierr, __FILE__, __LINE__)
 
-  ! Disable blockette code for the first run
-  useBlockettesSave = useBlockettes
-  useBlockettes = .False.
+    ! Disable blockette code for the first run
+    useBlockettesSave = useBlockettes
+    useBlockettes = .False.
 
-  ! print *,'flag2'
+    ! print *,'flag2'
 
-  niter = 5
-  block_size = BS
-  call mpi_barrier(adflow_comm_world, ierr)
-  timeA = mpi_wtime()
+    niter = 5
+    block_size = BS
+    call mpi_barrier(adflow_comm_world, ierr)
+    timeA = mpi_wtime()
 
-  do i=1, nIter
-     ! Call blockette code without vectorized routines
-     call computeMatrixFreeProductBwdFast(dwb_pointer, wb_pointer, size(dwb_pointer))
-  end do
-  call mpi_barrier(adflow_comm_world, ierr)
-  timeB = mpi_wtime()
+    do i = 1, nIter
+        ! Call blockette code without vectorized routines
+        call computeMatrixFreeProductBwdFast(dwb_pointer, wb_pointer, size(dwb_pointer))
+    end do
+    call mpi_barrier(adflow_comm_world, ierr)
+    timeB = mpi_wtime()
 
-  iSize = 0
-  do nn=1, nDom
-     call setPointers(nn, 1, 1)
-     iSize = iSize + bnx*bny*bnz
-     !print *,'dw:', dw(2,2,2,1), dw(2,2,2,6)
-     !print *, 'sum:', myid, sum(bdw(2:bil, 2:bjl, 2:bkl, 1:nw))
-  end do
+    iSize = 0
+    do nn = 1, nDom
+        call setPointers(nn, 1, 1)
+        iSize = iSize + bnx * bny * bnz
+        !print *,'dw:', dw(2,2,2,1), dw(2,2,2,6)
+        !print *, 'sum:', myid, sum(bdw(2:bil, 2:bjl, 2:bkl, 1:nw))
+    end do
 
-  speed1 = iSize*nIter/(timeB-timeA)/1e6
-  ! print *,'flag3'
+    speed1 = iSize * nIter / (timeB - timeA) / 1e6
+    ! print *,'flag3'
 
-  ! call calcDWDNorm(norm)
-  call calcADNorm(norm)
+    ! call calcDWDNorm(norm)
+    call calcADNorm(norm)
 
-  if (myid == 0) then
-    print *,'speed1:', speed1, timeB-timeA, 0, isize, norm ,bnx, bny, bnz
-  end if
+    if (myid == 0) then
+        print *, 'speed1:', speed1, timeB - timeA, 0, isize, norm, bnx, bny, bnz
+    end if
 
-  ! Enable the vectorized code for the second run
-  useBlockettes = .True.
+    ! Enable the vectorized code for the second run
+    useBlockettes = .True.
 
-  ! ! we need to re-set the AD seeds
-  ! ii = 0
-  ! do nn=1,nDom
-  !   call setPointers_d(nn, 1, 1)
-  !   do k=2, bkl
-  !      do j=2, bjl
-  !         do i=2, bil
-  !            do l=1, 6
-  !               ii = ii + 1
-  !               ! print *, i,j,k,l,ii, bdw(i,j,k,l)
-  !               dwb_pointer(ii) = bdw(i, j, k, l)
-  !            end do
-  !         end do
-  !      end do
-  !   end do
-  ! end do
+    ! ! we need to re-set the AD seeds
+    ! ii = 0
+    ! do nn=1,nDom
+    !   call setPointers_d(nn, 1, 1)
+    !   do k=2, bkl
+    !      do j=2, bjl
+    !         do i=2, bil
+    !            do l=1, 6
+    !               ii = ii + 1
+    !               ! print *, i,j,k,l,ii, bdw(i,j,k,l)
+    !               dwb_pointer(ii) = bdw(i, j, k, l)
+    !            end do
+    !         end do
+    !      end do
+    !   end do
+    ! end do
 
-  call mpi_barrier(adflow_comm_world, ierr)
-  ! Test the blockette code
-  timeA = mpi_wtime()
-  do i=1, nIter
-     ! Call blockette code with vectorized routines
-     call computeMatrixFreeProductBwdFast(dwb_pointer, wb_pointer, size(dwb_pointer))
-  end do
-  call mpi_barrier(adflow_comm_world, ierr)
-  timeB = mpi_wtime()
+    call mpi_barrier(adflow_comm_world, ierr)
+    ! Test the blockette code
+    timeA = mpi_wtime()
+    do i = 1, nIter
+        ! Call blockette code with vectorized routines
+        call computeMatrixFreeProductBwdFast(dwb_pointer, wb_pointer, size(dwb_pointer))
+    end do
+    call mpi_barrier(adflow_comm_world, ierr)
+    timeB = mpi_wtime()
 
-  call VecRestoreArrayF90(vecY, wb_pointer, ierr)
-  call EChk(ierr,__FILE__,__LINE__)
+    call VecRestoreArrayF90(vecY, wb_pointer, ierr)
+    call EChk(ierr, __FILE__, __LINE__)
 
-  call VecRestoreArrayF90(Vecx, dwb_pointer, ierr)
-  call EChk(ierr,__FILE__,__LINE__)
+    call VecRestoreArrayF90(Vecx, dwb_pointer, ierr)
+    call EChk(ierr, __FILE__, __LINE__)
 
-  !print *,'dw:', dw(2,2,2,1), dw(2,2,2,6)
-  !print *, 'sum:', myid, sum(bdw(2:bil, 2:bjl, 2:bkl, 1:nw))
+    !print *,'dw:', dw(2,2,2,1), dw(2,2,2,6)
+    !print *, 'sum:', myid, sum(bdw(2:bil, 2:bjl, 2:bkl, 1:nw))
 
-  speed2 = iSize*nIter/(timeB-timeA)/1e6
-  ! call calcDWDNorm(norm)
-  call calcADNorm(norm)
+    speed2 = iSize * nIter / (timeB - timeA) / 1e6
+    ! call calcDWDNorm(norm)
+    call calcADNorm(norm)
 
-  ! We need to also compare the norms of pd, rlvd, revd, radid, radjd, radkd
+    ! We need to also compare the norms of pd, rlvd, revd, radid, radjd, radkd
 
-  if (myid == 0) then
-    print *,'speed2:',speed2 , timeB-timeA, 0, isize, norm, BS
-  end if
-  !print *, 'loop count:', loopCount, il, jl, kl
+    if (myid == 0) then
+        print *, 'speed2:', speed2, timeB - timeA, 0, isize, norm, BS
+    end if
+    !print *, 'loop count:', loopCount, il, jl, kl
 
-  ! Restore the useBlockettes option
-  useBlockettes = useBlockettesSave
+    ! Restore the useBlockettes option
+    useBlockettes = useBlockettesSave
 
 end subroutine test_b
 
 subroutine calcResNorm(norm)
 
-  use constants
-    use blockPointers, only : bnx=>nx, bny=>ny, bnz=>nz, &
-         bil=>il, bjl=>jl, bkl=>kl, &
-         bie=>ie, bje=>je, bke=>ke, &
-         bib=>ib, bjb=>jb, bkb=>kb, &
-         bw=>w, bp=>p, bgamma=>gamma, &
-         bx=>x, brlv=>rlv, brev=>rev, bvol=>vol, bVolRef=>volRef, bd2wall=>d2wall, &
-         biblank=>iblank, bPorI=>porI, bPorJ=>porJ, bPorK=>porK, bdw=>dw, bfw=>fw
-  implicit none
+    use constants
+    use blockPointers, only: bnx => nx, bny => ny, bnz => nz, &
+                             bil => il, bjl => jl, bkl => kl, &
+                             bie => ie, bje => je, bke => ke, &
+                             bib => ib, bjb => jb, bkb => kb, &
+                             bw => w, bp => p, bgamma => gamma, &
+                             bx => x, brlv => rlv, brev => rev, bvol => vol, bVolRef => volRef, bd2wall => d2wall, &
+                             biblank => iblank, bPorI => porI, bPorJ => porJ, bPorK => porK, bdw => dw, bfw => fw
+    implicit none
 
-  integer(kind=intType) :: i, j, k, l
-  real(kind=realType), intent(out) :: norm
+    integer(kind=intType) :: i, j, k, l
+    real(kind=realType), intent(out) :: norm
 
-  ! Calculate the norm
-  norm = 0.0_realType
-  ! do k = 1, bnz
-  !   do j = 1, bny
-  !     do i = 1, bnx
-  do k=2, bkl
-     do j=2, bjl
-        do i=2, bil
-           do l = 1, 6
-             norm = norm + bdw(i,j,k,l)*bdw(i,j,k,l)
+    ! Calculate the norm
+    norm = 0.0_realType
+    ! do k = 1, bnz
+    !   do j = 1, bny
+    !     do i = 1, bnx
+    do k = 2, bkl
+        do j = 2, bjl
+            do i = 2, bil
+                do l = 1, 6
+                    norm = norm + bdw(i, j, k, l) * bdw(i, j, k, l)
+                end do
+            end do
         end do
-      end do
     end do
-  end do
 
-  norm = sqrt(norm)/(bnx*bny*bnz)
+    norm = sqrt(norm) / (bnx * bny * bnz)
 
 end subroutine calcResNorm
 
 subroutine calcADNorm(norm)
 
     use constants
-    use block, only : nDom
+    use block, only: nDom
 
-    use blockPointers, only : bnx=>nx, bny=>ny, bnz=>nz, &
-         bil=>il, bjl=>jl, bkl=>kl, &
-         bie=>ie, bje=>je, bke=>ke, &
-         bib=>ib, bjb=>jb, bkb=>kb, &
-         bw=>w, bp=>p, bgamma=>gamma, &
-         bx=>x, brlv=>rlv, brev=>rev, bvol=>vol, bVolRef=>volRef, bd2wall=>d2wall, &
-         biblank=>iblank, bPorI=>porI, bPorJ=>porJ, bPorK=>porK, bdw=>dw, bfw=>fw, bwd=>wd
-    use utils, only : setPointers_d, setPointers
+    use blockPointers, only: bnx => nx, bny => ny, bnz => nz, &
+                             bil => il, bjl => jl, bkl => kl, &
+                             bie => ie, bje => je, bke => ke, &
+                             bib => ib, bjb => jb, bkb => kb, &
+                             bw => w, bp => p, bgamma => gamma, &
+                             bx => x, brlv => rlv, brev => rev, bvol => vol, bVolRef => volRef, bd2wall => d2wall, &
+                         biblank => iblank, bPorI => porI, bPorJ => porJ, bPorK => porK, bdw => dw, bfw => fw, bwd => wd
+    use utils, only: setPointers_d, setPointers
 
     implicit none
 
@@ -344,37 +343,37 @@ subroutine calcADNorm(norm)
     real(kind=realType), intent(out) :: norm
 
     norm = 0.0_realType
-    do nn=1,nDom
-       do sps=1,1
-         call setPointers_d(nn, 1, sps)
-         do k=2, bkl
-            do j=2, bjl
-               do i=2, bil
-                   do l=1, 6
-                      norm = norm + bwd(i, j, k, l)*bwd(i, j, k, l)
-                   end do
+    do nn = 1, nDom
+        do sps = 1, 1
+            call setPointers_d(nn, 1, sps)
+            do k = 2, bkl
+                do j = 2, bjl
+                    do i = 2, bil
+                        do l = 1, 6
+                            norm = norm + bwd(i, j, k, l) * bwd(i, j, k, l)
+                        end do
+                    end do
                 end do
-             end do
-          end do
-       end do
+            end do
+        end do
     end do
 
-    norm = sqrt(norm)/(bnx*bny*bnz)
+    norm = sqrt(norm) / (bnx * bny * bnz)
 end subroutine calcADNorm
 
 subroutine calcDWDNorm(norm)
 
     use constants
-    use block, only : nDom
+    use block, only: nDom
 
-    use blockPointers, only : bnx=>nx, bny=>ny, bnz=>nz, &
-         bil=>il, bjl=>jl, bkl=>kl, &
-         bie=>ie, bje=>je, bke=>ke, &
-         bib=>ib, bjb=>jb, bkb=>kb, &
-         bw=>w, bp=>p, bgamma=>gamma, &
-         bx=>x, brlv=>rlv, brev=>rev, bvol=>vol, bVolRef=>volRef, bd2wall=>d2wall, &
-         biblank=>iblank, bPorI=>porI, bPorJ=>porJ, bPorK=>porK, bdw=>dw, bfw=>fw, bdwd=>dwd
-    use utils, only : setPointers_d, setPointers
+    use blockPointers, only: bnx => nx, bny => ny, bnz => nz, &
+                             bil => il, bjl => jl, bkl => kl, &
+                             bie => ie, bje => je, bke => ke, &
+                             bib => ib, bjb => jb, bkb => kb, &
+                             bw => w, bp => p, bgamma => gamma, &
+                             bx => x, brlv => rlv, brev => rev, bvol => vol, bVolRef => volRef, bd2wall => d2wall, &
+                       biblank => iblank, bPorI => porI, bPorJ => porJ, bPorK => porK, bdw => dw, bfw => fw, bdwd => dwd
+    use utils, only: setPointers_d, setPointers
 
     implicit none
 
@@ -382,59 +381,59 @@ subroutine calcDWDNorm(norm)
     real(kind=realType), intent(out) :: norm
 
     norm = 0.0_realType
-    do nn=1,nDom
-       do sps=1,1
-         call setPointers_d(nn, 1, sps)
-         do k=2, bkl
-            do j=2, bjl
-               do i=2, bil
-                   do l=1, 6
-                      norm = norm + bdwd(i, j, k, l)*bdwd(i, j, k, l)
-                   end do
+    do nn = 1, nDom
+        do sps = 1, 1
+            call setPointers_d(nn, 1, sps)
+            do k = 2, bkl
+                do j = 2, bjl
+                    do i = 2, bil
+                        do l = 1, 6
+                            norm = norm + bdwd(i, j, k, l) * bdwd(i, j, k, l)
+                        end do
+                    end do
                 end do
-             end do
-          end do
-       end do
+            end do
+        end do
     end do
 
-    norm = sqrt(norm)/(bnx*bny*bnz)
+    norm = sqrt(norm) / (bnx * bny * bnz)
 end subroutine calcDWDNorm
 
 subroutine orig
 
     use constants
-    use communication, only : adflow_comm_world
-    use BCRoutines, only : applyallBC_block
-    use turbbcRoutines, only : applyallTurbBCthisblock, bcTurbTreatment
-    use iteration, only : currentLevel, rfil
-    use inputAdjoint,  only : viscPC
-    use flowVarRefState, only : nwf, nw
-    use blockPointers, only : nDom, il, jl, kl
-    use flowVarRefState, only : viscous
-    use inputPhysics , only : turbProd, equationMode, equations, turbModel
-    use inputDiscretization, only : lowSpeedPreconditioner, lumpedDiss, spaceDiscr, useAPproxWallDistance
-    use inputTimeSpectral, only : nTimeIntervalsSpectral
-    use initializeFlow, only : referenceState
+    use communication, only: adflow_comm_world
+    use BCRoutines, only: applyallBC_block
+    use turbbcRoutines, only: applyallTurbBCthisblock, bcTurbTreatment
+    use iteration, only: currentLevel, rfil
+    use inputAdjoint, only: viscPC
+    use flowVarRefState, only: nwf, nw
+    use blockPointers, only: nDom, il, jl, kl
+    use flowVarRefState, only: viscous
+    use inputPhysics, only: turbProd, equationMode, equations, turbModel
+    use inputDiscretization, only: lowSpeedPreconditioner, lumpedDiss, spaceDiscr, useAPproxWallDistance
+    use inputTimeSpectral, only: nTimeIntervalsSpectral
+    use initializeFlow, only: referenceState
     use section, only: sections, nSections
-    use monitor, only : timeUnsteadyRestart
-    use sa, only : saSource, saViscous, saResScale, qq
-    use haloExchange, only : exchangeCoor, whalo2
-    use wallDistance, only : updateWallDistancesQuickly
-    use solverUtils, only : timeStep_block
-    use flowUtils, only : allNodalGradients, computeLamViscosity, computePressureSimple, &
-         computeSpeedOfSoundSquared, adjustInflowAngle
-    use fluxes, only : inviscidDissFluxScalarApprox, inviscidDissFluxMatrixApprox, &
-         inviscidUpwindFlux, inviscidDissFluxScalar, inviscidDissFluxMatrix, &
-         viscousFlux, viscousFluxApprox, inviscidCentralFlux
-    use utils, only : setPointers, EChk
-    use turbUtils, only : turbAdvection, computeEddyViscosity
-    use residuals, only : initRes_block
-    use surfaceIntegrations, only : integrateSurfaces
-    use adjointExtra, only : volume_block, metric_block, boundaryNormals,&
-         xhalo_block, sumdwandfw, resScale
-    use oversetData, only : oversetPresent
-    use inputOverset, only : oversetUpdateMode
-    use oversetCommUtilities, only : updateOversetConnectivity
+    use monitor, only: timeUnsteadyRestart
+    use sa, only: saSource, saViscous, saResScale, qq
+    use haloExchange, only: exchangeCoor, whalo2
+    use wallDistance, only: updateWallDistancesQuickly
+    use solverUtils, only: timeStep_block
+    use flowUtils, only: allNodalGradients, computeLamViscosity, computePressureSimple, &
+                         computeSpeedOfSoundSquared, adjustInflowAngle
+    use fluxes, only: inviscidDissFluxScalarApprox, inviscidDissFluxMatrixApprox, &
+                      inviscidUpwindFlux, inviscidDissFluxScalar, inviscidDissFluxMatrix, &
+                      viscousFlux, viscousFluxApprox, inviscidCentralFlux
+    use utils, only: setPointers, EChk
+    use turbUtils, only: turbAdvection, computeEddyViscosity
+    use residuals, only: initRes_block
+    use surfaceIntegrations, only: integrateSurfaces
+    use adjointExtra, only: volume_block, metric_block, boundaryNormals, &
+                            xhalo_block, sumdwandfw, resScale
+    use oversetData, only: oversetPresent
+    use inputOverset, only: oversetUpdateMode
+    use oversetCommUtilities, only: updateOversetConnectivity
     implicit none
 
     ! Working Variables
@@ -446,13 +445,13 @@ subroutine orig
     localVal = zero
 
     call initRes_block(1, nw, nn, sps)
-    allocate(qq(2:il, 2:jl, 2:kl))
+    allocate (qq(2:il, 2:jl, 2:kl))
     call saSource
-    call turbAdvection(1_intType, 1_intType, itu1-1, qq)
+    call turbAdvection(1_intType, 1_intType, itu1 - 1, qq)
     !call unsteadyTurbTerm(1_intType, 1_intType, itu1-1, qq)
     call saViscous
     call saResScale
-    deallocate(qq)
+    deallocate (qq)
 
     rFil = one
     ! Compute the mean flow residuals
@@ -465,7 +464,7 @@ subroutine orig
     call sumDwAndFw
     call resScale
 
-  end subroutine orig
+end subroutine orig
 
 ! subroutine superCode(w, x, vol, P, rlv, rev, gamma, porI, porJ, porK, d2wall, &
 !      volRef, dw, fw, iblank)
@@ -616,7 +615,6 @@ subroutine orig
 !            v2(2) = x(i,j,k,2) - x(i,m,n,2)
 !            v2(3) = x(i,j,k,3) - x(i,m,n,3)
 
-
 !            v1(1) = x(i,j,n,1) - x(i,m,k,1)
 !            v1(2) = x(i,j,n,2) - x(i,m,k,2)
 !            v1(3) = x(i,j,n,3) - x(i,m,k,3)
@@ -632,7 +630,6 @@ subroutine orig
 !         enddo
 !      enddo
 !   enddo
-
 
 !   ! Projected areas of cell faces in the j direction.
 
@@ -1238,7 +1235,6 @@ subroutine orig
 !   do k=2, kl
 !      do j=2, jl
 !         do i=2, il
-
 
 !            ! Compute the grid velocity if present.
 !            ! It is taken as the average of j and j-1,
@@ -2310,7 +2306,6 @@ subroutine orig
 !      enddo
 !   enddo
 
-
 !   ! Second part. Contribution in the j-direction.
 !   ! The contribution is scattered to both the left and right node
 !   ! in j-direction.
@@ -2581,7 +2576,6 @@ subroutine orig
 !                 +         qy(i-1,j,  k) + qy(i,j,  k))
 !            q_z = fourth*(qz(i-1,j-1,k) + qz(i,j-1,k) &
 !                 +         qz(i-1,j,  k) + qz(i,j,  k))
-
 
 !            ! The gradients in the normal direction are corrected, such
 !            ! that no averaging takes places here.
@@ -3201,11 +3195,7 @@ subroutine orig
 !      end do
 !   end do
 
-
 ! end subroutine superCode
-
-
-
 
 ! ! Try to run superCode
 !  timeA = mpi_wtime()
@@ -3307,14 +3297,11 @@ subroutine orig
 ! ! Super block Ouputs
 ! real(kind=realType), dimension(1:BS+2, 1:BS+2, 1:BS+2, 1:nw) :: ffw, ddw
 
-
-
 !     !$OMP& private(bnx, bny, bnz, bil, bjl, bkl, bie, bje, bke, bib, bjb, bkb) &
 !     !$OMP& private(singleHaloStart, doubleHaloStart, nodeStart) &
 !     !$OMP& private(bw, bp, bgamma, bss, bx, brlv, brev, bvol, baa, bradI, bradJ, bradK) &
 !     !$OMP& private(bdss, bvolRef, bd2wall, biblank, bporI, bporJ, bporK, bfw, bdw) &
 !     !$OMP& private(bux, buy, buz, bvx, bvy, bvz, bwx, bwy, bwz, bqx, bqy, bqz) & !
-
 
      !!$OMP& private(nx, ny, nz, il, jl, kl, ie, je, ke, ib, jb, kb) &
      !!$OMP& private(singleHaloStart, doubleHaloStart, nodeStart) &
