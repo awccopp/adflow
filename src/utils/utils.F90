@@ -1,4 +1,5 @@
 module utils
+ implicit none
 
  contains
 
@@ -2552,32 +2553,6 @@ end subroutine cross_prod
 
   end function delta
 
-
-  logical function myIsNAN(val)
-    !
-    !       myIsNAN determines whether or not the given value is a NAN and
-    !       returns the according logical.
-    !
-    use constants
-    implicit none
-    !
-    !      Function arguments.
-    !
-    real(kind=realType), intent(in) :: val
-    !
-    !      Local variable.
-    !
-    integer(kind=intType) :: res
-
-    call myIsNaNC(val, res)
-    if(res == 1) then
-       myIsNAN = .true.
-    else
-       myIsNAN = .false.
-    endif
-
-  end function myIsNAN
-  !
   subroutine nullifyCGNSDomPointers(nn)
     !
     !       nullifyCGNSDomPointers nullifies all the pointers of the
@@ -3427,7 +3402,7 @@ end subroutine cross_prod
     ! Flow variables. Note that wOld, gamma and the laminar viscosity
     ! point to the entries on the finest mesh. The reason is that
     ! they are computed from the other variables. For the eddy
-    ! viscosity this is not the case because in a segregated solver
+    ! viscosity this is not the case because in a decoupled solver
     ! its values are obtained from the fine grid level.
 
     w     => flowDoms(nn,mm,ll)%w
@@ -3615,7 +3590,7 @@ end subroutine cross_prod
     ! Flow variables. Note that wOld, gamma and the laminar viscosity
     ! point to the entries on the finest mesh. The reason is that
     ! they are computed from the other variables. For the eddy
-    ! viscosity this is not the case because in a segregated solver
+    ! viscosity this is not the case because in a decoupled solver
     ! its values are obtained from the fine grid level.
 
     wd     => flowDomsd(nn,1,sps)%w
@@ -3649,6 +3624,8 @@ end subroutine cross_prod
     dwd => flowDomsd(nn,1,sps)%dw
     fwd => flowDomsd(nn,1,sps)%fw
     scratchd => flowDomsd(nn,1,sps)%scratch
+
+    dtld => flowDomsd(nn,1,sps)%dtl
 
     ! Time-stepping variables and spectral radIi.
     ! They asps point to the fine mesh entry.
@@ -4425,37 +4402,67 @@ end subroutine cross_prod
        deallocate(cgnsFamilies)
     end if
 
-    deallocate(cgnsDomsd)
+    if (allocated(cgnsDomsd)) then
+       deallocate(cgnsDomsd)
+    end if
     ! deallocate(famIDsDomainInterfaces, &
     !      bcIDsDomainInterfaces,  &
     !      famIDsSliding)
-    deallocate(sections)
+    if (allocated(sections)) then
+       deallocate(sections)
+    end if
 
-    do j=1, size(BCFamExchange, 2)
-       do i=1, size(BCFamExchange, 1)
-          call destroyFamilyExchange(BCFamExchange(i,j))
-       end do
-    end do
-    deallocate(BCFamExchange)
+    if (allocated(BCFamExchange)) then
+      do j=1, size(BCFamExchange, 2)
+         do i=1, size(BCFamExchange, 1)
+            call destroyFamilyExchange(BCFamExchange(i,j))
+         end do
+      end do
+      deallocate(BCFamExchange)
+    end if
 
-    ! From Communication Stuff
-    do l=1,nLevels
+    if (allocated(nCellGlobal)) then
+       deallocate(nCellGlobal)
+    end if
 
-       call deallocateCommType(commPatternCell_1st(l))
-       call deallocateCommType(commPatternCell_2nd(l))
-       call deallocateCommType(commPatternNode_1st(l))
 
-       call deallocateInternalCommType(internalCell_1st(l))
-       call deallocateInternalCommType(internalCell_2nd(l))
-       call deallocateInternalCommType(internalNode_1st(l))
-
-    end do
-    deallocate(nCellGlobal)
-
-    ! Now deallocate the containers
-    deallocate(&
-         commPatternCell_1st, commPatternCell_2nd, commPatternNode_1st, &
-         internalCell_1st, internalCell_2nd, internalNode_1st)
+   ! Now deallocate the containers and communication objects.
+    if (allocated(commPatternCell_1st)) then
+      do l=1,nLevels
+         call deallocateCommType(commPatternCell_1st(l))
+      end do
+      deallocate(commPatternCell_1st)
+    end if
+    if (allocated(commPatternCell_2nd)) then
+      do l=1,nLevels
+         call deallocateCommType(commPatternCell_2nd(l))
+      end do
+      deallocate(commPatternCell_2nd)
+    end if
+    if (allocated(commPatternNode_1st)) then
+      do l=1,nLevels
+         call deallocateCommType(commPatternNode_1st(l))
+      end do
+      deallocate(commPatternNode_1st)
+    end if
+    if (allocated(internalCell_1st)) then
+      do l=1,nLevels
+         call deallocateInternalCommType(internalCell_1st(l))
+      end do
+      deallocate(internalCell_1st)
+    end if
+    if (allocated(internalCell_2nd)) then
+      do l=1,nLevels
+         call deallocateInternalCommType(internalCell_2nd(l))
+      end do
+      deallocate(internalCell_2nd)
+    end if
+    if (allocated(internalNode_1st)) then
+      do l=1,nLevels
+         call deallocateInternalCommType(internalNode_1st(l))
+      end do
+      deallocate(internalNode_1st)
+    end if
 
     ! Send/recv buffer
     if (allocated(sendBuffer)) then
@@ -4467,7 +4474,12 @@ end subroutine cross_prod
     end if
 
     ! massFlow stuff from setFamilyInfoFaces.f90
-    deallocate(massFLowFamilyInv, massFlowFamilyDiss)
+    if (allocated(massFlowFamilyInv)) then
+       deallocate(massFlowFamilyInv)
+    end if
+    if (allocated(massFlowFamilyDiss)) then
+       deallocate(massFlowFamilyDiss)
+    end if
 
   end subroutine releaseMemoryPart1
 
@@ -4625,6 +4637,7 @@ end subroutine cross_prod
                flowDomsd(nn, level, sps)%aa, &
                flowDomsd(nn, level, sps)%rlv, &
                flowDomsd(nn, level, sps)%rev, &
+               flowDomsd(nn, level, sps)%dtl, &
                flowDomsd(nn, level, sps)%radI, &
                flowDomsd(nn, level, sps)%radJ, &
                flowDomsd(nn, level, sps)%radK, &
@@ -4724,6 +4737,7 @@ end subroutine cross_prod
     !
     use block
     use inputTimeSpectral
+    use inputPhysics, only : cpmin_family
     use ADjointPETSc
     use cgnsGrid
     implicit none
@@ -4736,61 +4750,69 @@ end subroutine cross_prod
 
     ! Release the memory of flowDoms of the finest grid and of the
     ! array flowDoms afterwards.
-
-    do sps=1,nTimeIntervalsSpectral
-       do nn=1,nDom
-          call deallocateBlock(nn, 1_intType, sps)
-       enddo
-    enddo
-    deallocate(flowDoms, stat=ierr)
-    if(ierr /= 0)                          &
-         call terminate("releaseMemoryPart2", &
-         "Deallocation failure for flowDoms")
+    if (allocated(flowDoms)) then
+      do sps=1,nTimeIntervalsSpectral
+         do nn=1,nDom
+            call deallocateBlock(nn, 1_intType, sps)
+         enddo
+      enddo
+      deallocate(flowDoms, stat=ierr)
+      if(ierr /= 0)                          &
+           call terminate("releaseMemoryPart2", &
+           "Deallocation failure for flowDoms")
+    end if
 
     ! Some more memory should be deallocated if this code is to
     ! be used in combination with adaptation.
 
+    ! deallocate the cpmin_family array allocated in inputParamRoutines
+    if (allocated(cpmin_family)) &
+        deallocate(cpmin_family)
+
     ! Destroy variables allocated in preprocessingAdjoint
+    if (adjointPETScPreProcVarsAllocated) then
+      call vecDestroy(w_like1,PETScIerr)
+      call EChk(PETScIerr, __FILE__, __LINE__)
 
-    call vecDestroy(w_like1,PETScIerr)
-    call EChk(PETScIerr, __FILE__, __LINE__)
+      call vecDestroy(w_like2,PETScIerr)
+      call EChk(PETScIerr, __FILE__, __LINE__)
 
-    call vecDestroy(w_like2,PETScIerr)
-    call EChk(PETScIerr, __FILE__, __LINE__)
+      call vecDestroy(psi_like1,PETScIerr)
+      call EChk(PETScIerr, __FILE__, __LINE__)
 
-    call vecDestroy(psi_like1,PETScIerr)
-    call EChk(PETScIerr, __FILE__, __LINE__)
+      call vecDestroy(psi_like2,PETScIerr)
+      call EChk(PETScIerr, __FILE__, __LINE__)
 
-    call vecDestroy(psi_like2,PETScIerr)
-    call EChk(PETScIerr, __FILE__, __LINE__)
+      call vecDestroy(psi_like3,PETScIerr)
+      call EChk(PETScIerr, __FILE__, __LINE__)
 
-    call vecDestroy(psi_like3,PETScIerr)
-    call EChk(PETScIerr, __FILE__, __LINE__)
-
-    call vecDestroy(x_like,PETScIerr)
-    call EChk(PETScIerr, __FILE__, __LINE__)
+      call vecDestroy(x_like,PETScIerr)
+      call EChk(PETScIerr, __FILE__, __LINE__)
+    end if
 
     ! Finally delete cgnsDoms...but there is still more
     ! pointers that need to be deallocated...
-    do nn=1,cgnsNDom
-       if (associated(cgnsDoms(nn)%procStored)) &
-            deallocate(cgnsDoms(nn)%procStored)
+    if (allocated(cgnsDoms)) then
+      do nn=1,cgnsNDom
+         if (associated(cgnsDoms(nn)%procStored)) &
+               deallocate(cgnsDoms(nn)%procStored)
 
-       if (associated(cgnsDoms(nn)%conn1to1)) &
-            deallocate(cgnsDoms(nn)%conn1to1)
+         if (associated(cgnsDoms(nn)%conn1to1)) &
+               deallocate(cgnsDoms(nn)%conn1to1)
 
-       if (associated(cgnsDoms(nn)%connNonMatchAbutting)) &
-            deallocate(cgnsDoms(nn)%connNonMatchAbutting)
+         if (associated(cgnsDoms(nn)%connNonMatchAbutting)) &
+               deallocate(cgnsDoms(nn)%connNonMatchAbutting)
 
-       if (associated(cgnsDoms(nn)%bocoInfo)) &
-            deallocate(cgnsDoms(nn)%bocoInfo)
+         if (associated(cgnsDoms(nn)%bocoInfo)) &
+               deallocate(cgnsDoms(nn)%bocoInfo)
 
-       deallocate(&
-            cgnsDoms(nn)%iBegOr, cgnsDoms(nn)%iEndOr, &
-            cgnsDoms(nn)%jBegOr, cgnsDoms(nn)%jEndOr, &
-            cgnsDoms(nn)%kBegOr, cgnsDoms(nn)%kEndOr, &
-            cgnsDoms(nn)%localBlockID)
-    end do
+         deallocate(&
+               cgnsDoms(nn)%iBegOr, cgnsDoms(nn)%iEndOr, &
+               cgnsDoms(nn)%jBegOr, cgnsDoms(nn)%jEndOr, &
+               cgnsDoms(nn)%kBegOr, cgnsDoms(nn)%kEndOr, &
+               cgnsDoms(nn)%localBlockID)
+      end do
+   end if
 
   end subroutine releaseMemoryPart2
 
@@ -5690,7 +5712,7 @@ end subroutine cross_prod
   end subroutine returnFail
 
 
-  subroutine EChk(ierr, file, line)
+  subroutine EChk(errorcode, file, line)
 
     ! Check if ierr that resulted from a petsc or MPI call is in fact an
     ! error.
@@ -5698,34 +5720,30 @@ end subroutine cross_prod
     use communication, only : adflow_comm_world, myid
     implicit none
 
-    integer(kind=intType),intent(in) :: ierr
-    character*(*),intent(in) :: file
+    integer(kind=intType),intent(in) :: errorcode
+    character(len=*),intent(in) :: file
     integer(kind=intType),intent(in) :: line
+    integer::ierr
+    character(len=maxStringLen) :: errorCodeFormat, errorLineFormat
 
-    if (ierr == 0) then
+    errorCodeFormat = "(2(A, I2,)"
+    errorLineFormat = "(A, I5, A, A)"
+
+    if (errorcode == 0) then
        return ! No error, return immediately
     else
 #ifndef USE_TAPENADE
-#ifndef USE_COMPLEX
        print *,'---------------------------------------------------------------------------'
-       write(*,900) "PETSc or MPI Error. Error Code ",ierr,". Detected on Proc ",myid
-       write(*,901) "Error at line: ",line," in file: ",file
+       print errorCodeFormat, "PETSc or MPI Error. Error Code ",errorcode,". Detected on Proc ",myid
+       print errorLineFormat, "Error at line: ",line," in file: ",file
        print *,'---------------------------------------------------------------------------'
-#else
-       print *,'-----------------------------------------------------------------'
-       write(*,900) "PETSc or MPI Error. Error Code ",ierr,". Detected on Proc ",myid
-       write(*,901) "Error at line: ",line," in file: ",file
-       print *,'-----------------------------------------------------------------'
-#endif
-       call MPI_Abort(adflow_comm_world,ierr)
+       call MPI_Abort(adflow_comm_world,errorcode,ierr)
        stop ! Just in case
 #else
        stop
 #endif
     end if
 
-900 format(A,I2,A,I2)
-901 format(A,I5,A,A)
   end subroutine EChk
 
   subroutine convertToLowerCase(string)
@@ -5814,7 +5832,7 @@ end subroutine cross_prod
     use constants
     use inputTimeSpectral, only : nTimeIntervalsSpectral
     use inputIO, only : storeConvInnerIter
-    use monitor, only : convArray, nMon
+    use monitor, only : convArray, nMon, solverDataArray, solverTypeArray, showCPU
     implicit none
     !
     !      Subroutine argument.
@@ -5825,6 +5843,8 @@ end subroutine cross_prod
     !
     integer :: ierr
 
+    integer(kind=intType):: nSolverMon ! number of solver monitor variables
+
     ! Return immediately if the convergence history (of the inner
     ! iterations) does not need to be stored. This logical can
     ! only be .false. for an unsteady computation.
@@ -5833,11 +5853,28 @@ end subroutine cross_prod
     if (allocated(convArray)) then
        deallocate(convArray)
     end if
+    if (allocated(solverDataArray)) then
+       deallocate(solverDataArray)
+    end if
+    if (allocated(solverTypeArray)) then
+       deallocate(solverTypeArray)
+    end if
+
+    if (showCPU) then
+      nSolverMon = 5
+    else
+      nSolverMon = 4
+    end if
 
     allocate(convArray(0:nIterTot, nTimeIntervalsSpectral, nMon))
+    allocate(solverDataArray(0:nIterTot, nTimeIntervalsSpectral, nSolverMon))
+    allocate(solverTypeArray(0:nIterTot, nTimeIntervalsSpectral))
 
     ! Zero Array:
     convArray = zero
+    solverDataArray = zero
+
+
 
   end subroutine allocConvArrays
 
@@ -5880,7 +5917,65 @@ end subroutine cross_prod
 
   end subroutine allocTimeArrays
 
+  subroutine getMonitorVariableNames(nvar, monitor_variables)
+   !
+   !  copy the names in monnames to another array so that is can be
+   !  passed back up the python level
+   !
+   use constants
+   use monitor, only: nmon, monnames
+   implicit none
 
+   ! save the monitor variable names into a new array
+   integer(kind=intType), intent(in):: nvar
+   character, dimension(nvar,maxCGNSNameLen), intent(out):: monitor_variables
+
+   ! working variables
+   character(len=maxCGNSNameLen) :: var_name
+   integer(kind=intType) :: c, idx_mon
+
+   do idx_mon=1,nvar
+      var_name =  monNames(idx_mon)
+
+      do c =1,len(monNames(idx_mon))
+         monitor_variables(idx_mon, c) =var_name(c:c)
+      end do
+   end do
+
+
+  end subroutine getMonitorVariableNames
+
+  subroutine getSolverTypeArray(niter, nsps, type_array)
+   !
+   !  copy the names in sovlerTypeArray to another array so that is can be
+   !  passed back up the python level
+   !
+   use constants
+   use monitor, only:  solverTypeArray
+   use inputTimeSpectral, only : nTimeIntervalsSpectral
+   use iteration, only: itertot
+   implicit none
+
+   ! save the monitor variable names into a new array
+   integer(kind=intType), intent(in):: niter, nsps
+   character, dimension(0:niter, ntimeintervalsspectral, maxIterTypelen), intent(out):: type_array
+
+   ! working variables
+   character(len=maxIterTypelen) :: type_name
+   integer(kind=intType) :: c, idx_sps, idx_iter
+
+   do idx_sps=1,ntimeintervalsspectral
+      do idx_iter=0,itertot
+         type_name =  solverTypeArray(idx_iter, idx_sps)
+
+         do c =1,len(solverTypeArray(idx_iter, idx_sps))
+            type_array(idx_iter, idx_sps, c) = type_name(c:c)
+         end do
+
+      end do
+   end do
+
+   end subroutine getSolverTypeArray
 
   subroutine convergenceHeader
     !
@@ -5922,7 +6017,32 @@ end subroutine cross_prod
 
        ! Add the number of characters needed for the actual variables.
 
+#ifndef USE_COMPLEX
+       ! for the real version this is easy
        nCharWrite = nCharWrite + nMon*(fieldWidthLarge+1)
+#else
+      ! for complex we need to differentiate between residuals and functionals
+      do i=1, nMon
+         select case (monNames(i))
+
+         case (cgnsL2resRho,  cgnsL2resMomx,    &
+               cgnsL2resMomy, cgnsL2resMomz,    &
+               cgnsL2resRhoe, cgnsL2resNu,      &
+               cgnsL2resK,    cgnsL2resOmega,   &
+               cgnsL2resTau,  cgnsL2resEpsilon, &
+               cgnsL2resV2,   cgnsL2resF, 'totalR')
+
+            ! complex residuals need 9 more characters
+            nCharWrite = nCharWrite + fieldWidthLarge+1 + 9
+
+         case default
+            ! complex functionals need 25 more characters
+            nCharWrite = nCharWrite + fieldWidthLarge+1 + 25
+
+         end select
+      end do
+#endif
+
        if( showCPU ) nCharWrite = nCharWrite + fieldWidth + 1
 
        ! Write the line of - signs. This line starts with a #, such
@@ -5953,6 +6073,10 @@ end subroutine cross_prod
        do i=1, nMon
           ! Determine the variable name and write the
           ! corresponding text.
+
+         ! we do the real and complex versions separately
+#ifndef USE_COMPLEX
+         ! real versions print the full 16 digits so these spacings are "regular" and the same for all
           select case (monNames(i))
 
           case ("totalR")
@@ -6052,6 +6176,110 @@ end subroutine cross_prod
              write(*,"(a)",advance="no") "       AxisMoment       |"
 
           end select
+#else
+         ! complex versions print the full 16 digits for real and complex for "functionals"
+         ! but shorter versions only for residuals
+         select case (monNames(i))
+
+         case ("totalR")
+            write(*,"(a)",advance="no") "            totalRes             |"
+
+         case (cgnsL2resRho)
+            write(*,"(a)",advance="no") "            Res rho              |"
+
+         case (cgnsL2resMomx)
+            write(*,"(a)",advance="no") "            Res rhou             |"
+
+         case (cgnsL2resMomy)
+            write(*,"(a)",advance="no") "            Res rhov             |"
+
+         case (cgnsL2resMomz)
+            write(*,"(a)",advance="no") "            Res rhow             |"
+
+         case (cgnsL2resRhoe)
+            write(*,"(a)",advance="no") "            Res rhoE             |"
+
+         case (cgnsL2resNu)
+            write(*,"(a)",advance="no") "           Res nuturb            |"
+
+         case (cgnsL2resK)
+            write(*,"(a)",advance="no") "           Res kturb             |"
+
+         case (cgnsL2resOmega)
+            write(*,"(a)",advance="no") "           Res wturb             |"
+
+         case (cgnsL2resTau)
+            write(*,"(a)",advance="no") "           Res tauturb           |"
+
+         case (cgnsL2resEpsilon)
+            write(*,"(a)",advance="no") "           Res epsturb           |"
+
+         case (cgnsL2resV2)
+            write(*,"(a)",advance="no") "           Res v2turb            |"
+
+         case (cgnsL2resF)
+            write(*,"(a)",advance="no") "           Res fturb             |"
+
+         case (cgnsCl)
+            write(*,"(a)",advance="no") "                     C_lift                      |"
+
+         case (cgnsClp)
+            write(*,"(a)",advance="no") "                    C_lift_p                     |"
+
+         case (cgnsClv)
+            write(*,"(a)",advance="no") "                    C_lift_v                     |"
+
+         case (cgnsCd)
+            write(*,"(a)",advance="no") "                    C_drag                       |"
+
+         case (cgnsCdp)
+            write(*,"(a)",advance="no") "                    C_drag_p                     |"
+
+         case (cgnsCdv)
+            write(*,"(a)",advance="no") "                    C_drag_v                     |"
+
+         case (cgnsCfx)
+            write(*,"(a)",advance="no") "                      C_Fx                       |"
+
+         case (cgnsCfy)
+            write(*,"(a)",advance="no") "                      C_Fy                       |"
+
+         case (cgnsCfz)
+            write(*,"(a)",advance="no") "                      C_Fz                       |"
+
+         case (cgnsCmx)
+            write(*,"(a)",advance="no") "                      C_Mx                       |"
+
+         case (cgnsCmy)
+            write(*,"(a)",advance="no") "                      C_My                       |"
+
+         case (cgnsCmz)
+            write(*,"(a)",advance="no") "                      C_Mz                       |"
+
+         case (cgnsHdiffMax)
+            write(*,"(a)",advance="no") "                   |H-H_inf|                     |"
+
+         case (cgnsMachMax)
+            write(*,"(a)",advance="no") "                    Mach_max                     |"
+
+         case (cgnsYplusMax)
+            write(*,"(a)",advance="no") "                     Y+_max                      |"
+
+         case (cgnsEddyMax)
+            write(*,"(a)",advance="no") "                    Eddyv_max                    |"
+
+         case (cgnsSepSensor)
+            write(*,"(a)",advance="no") "                    SepSensor                    |"
+
+         case (cgnsCavitation)
+            write(*,"(a)",advance="no") "                   Cavitation                    |"
+
+         case (cgnsAxisMoment)
+            write(*,"(a)",advance="no") "                   AxisMoment                    |"
+
+         end select
+#endif
+
        enddo
 
        print "(1x)"
@@ -6079,6 +6307,8 @@ end subroutine cross_prod
 
           ! Determine the variable name and write the
           ! corresponding text.
+#ifndef USE_COMPLEX
+          ! real mode gets the same width for all variables
           select case (monNames(i))
 
           case (cgnsHdiffMax)
@@ -6088,6 +6318,28 @@ end subroutine cross_prod
              write(*,"(a)",advance="no") "                        |"
 
           end select
+#else
+         ! complex mode gets shorter spacing for residuals
+         select case (monNames(i))
+
+         case (cgnsHdiffMax)
+            write(*,"(a)",advance="no") "                       max                       |"
+
+         case (cgnsL2resRho,  cgnsL2resMomx,    &
+               cgnsL2resMomy, cgnsL2resMomz,    &
+               cgnsL2resRhoe, cgnsL2resNu,      &
+               cgnsL2resK,    cgnsL2resOmega,   &
+               cgnsL2resTau,  cgnsL2resEpsilon, &
+               cgnsL2resV2,   cgnsL2resF, 'totalR')
+            ! residuals get a shorter line
+            write(*,"(a)",advance="no") "                                 |"
+         case default
+            ! regular functionals get the long empty line
+            write(*,"(a)",advance="no") "                                                 |"
+
+         end select
+#endif
+
        end do
        print "(1x)"
     end if
@@ -6126,7 +6378,15 @@ end subroutine cross_prod
     do k=2,kl
        do j=2,jl
           do i=2,il
+#ifndef USE_COMPLEX
              monLoc(mm) = monLoc(mm) + (dw(i,j,k,nn)/vol(i,j,k))**2
+#else
+            ! TODO squaring the complex residual when its order 1e-200 underflows and we need a better approach here
+            ! we need to square and sum the real and complex parts separately
+            monLoc(mm) = monLoc(mm) + &
+                         cmplx((real(dw(i,j,k,nn)/vol(i,j,k)))**2, &
+                         (aimag(dw(i,j,k,nn)/vol(i,j,k)))**2)
+#endif
           enddo
        enddo
     enddo
@@ -6163,11 +6423,26 @@ end subroutine cross_prod
              state_sum = 0.0
              ovv = one/vol(i,j,k)
              do l=1,nwf
+#ifndef USE_COMPLEX
                 state_sum = state_sum + (dw(i,j,k,l)*ovv)**2
+#else
+               ! TODO squaring the complex residual when its order 1e-200 underflows and we need a better approach here
+                ! we need to square and sum the real and complex parts separately
+                state_sum = state_sum + &
+                            cmplx((real(dw(i,j,k,l)*ovv))**2, &
+                            (aimag(dw(i,j,k,l)*ovv))**2)
+#endif
              end do
              do l=nt1,nt2
-                ! l-nt1+1 will index the turbResScale properly
-                state_sum = state_sum + (dw(i,j,k,l)*ovv*turbResScale(l-nt1+1))**2
+               ! l-nt1+1 will index the turbResScale properly
+#ifndef USE_COMPLEX
+               state_sum = state_sum + (dw(i,j,k,l)*ovv*turbResScale(l-nt1+1))**2
+#else
+               ! we need to square and sum the real and complex parts separately
+               state_sum = state_sum + &
+                           cmplx((real(dw(i,j,k,l)*ovv*turbResScale(l-nt1+1)))**2, &
+                           (aimag(dw(i,j,k,l)*ovv*turbResScale(l-nt1+1)))**2)
+#endif
              end do
              monLoc(mm) = monLoc(mm) + state_sum
           enddo
@@ -6182,8 +6457,8 @@ end subroutine cross_prod
     !       is started.
     !
     use constants
-    use monitor, only : nTimeStepsRestart, timeUnsteadyRestart, &
-         timeUnsteady, timeStepUnsteady
+    use monitor, only : nTimeStepsRestart, timeUnsteadyRestart, timeUnsteady, timeStepUnsteady
+    use commonFormats, only : strings
     implicit none
     !
     !      Local variables
@@ -6194,10 +6469,8 @@ end subroutine cross_prod
     ! Write the time step number to the integer string and the
     ! physical time to the real string.
 
-    write(integerString,"(i7)") timeStepUnsteady + &
-         nTimeStepsRestart
-    write(realString,"(e12.5)") timeUnsteady + &
-         timeUnsteadyRestart
+    write(integerString,"(i7)") timeStepUnsteady + nTimeStepsRestart
+    write(realString,"(es12.5)") timeUnsteady + timeUnsteadyRestart
 
     integerString = adjustl(integerString)
     realString    = adjustl(realString)
@@ -6205,17 +6478,12 @@ end subroutine cross_prod
     ! Write the header to stdout.
 
     print "(a)", "#"
-    print 100
-    print 101
-    print 102, trim(integerString), trim(realString)
-    print 101
-    print 100
+    print "(a)", "#**************************************************************************"
     print "(a)", "#"
-
-100 format("#*************************************************&
-         &*************************")
-101 format("#")
-102 format("# Unsteady time step ",a,", physical time ",a, " seconds")
+    print strings, "# Unsteady time step ", trim(integerString),", physical time ", trim(realString), " seconds"
+    print "(a)", "#"
+    print "(a)", "#**************************************************************************"
+    print "(a)", "#"
 
   end subroutine unsteadyHeader
 
@@ -6223,7 +6491,6 @@ end subroutine cross_prod
 
     use constants
     use inputTimeSpectral, only : nTimeIntervalsSpectral
-    use adjointVars, only : nCellsGlobal
     use blockPointers, only : nDom, il, jl, kl, x
 
     implicit none
@@ -6260,5 +6527,59 @@ end subroutine cross_prod
        end do
     end do
   end subroutine getCellCenters
+
+  subroutine getCellCGNSBlockIDs(level, n, cellID)
+
+    use constants
+    use inputTimeSpectral, only : nTimeIntervalsSpectral
+    use blockPointers, only : nDom, il, jl, kl, nbkGlobal
+
+    implicit none
+
+    ! Input/Output
+    integer(kind=intType), intent(in) :: level, n
+    real(kind=realType), dimension(n), intent(out) :: cellID
+
+    ! Working
+    integer(kind=intType) :: i, j, k, ii, nn, sps
+
+    ii = 0
+    do nn=1, nDom
+       do sps=1, nTimeIntervalsSpectral
+          call setPointers(nn, level, sps)
+
+          do k=2, kl
+             do j=2, jl
+                do i=2, il
+                   ii = ii + 1
+
+                   cellID(ii) = nbkGlobal
+
+                end do
+             end do
+          end do
+       end do
+    end do
+  end subroutine getCellCGNSBlockIDs
+
+  subroutine getNCGNSZones(nZones)
+    use cgnsGrid
+    implicit none
+    integer(kind=inttype), intent(out) :: nZones
+
+    nZones = cgnsNDom
+
+  end subroutine getNCGNSZones
+
+  subroutine getCGNSZoneName(i, zone)
+    use cgnsGrid
+      implicit none
+      character(len=maxCGNSNameLen), intent(out) :: zone
+      integer(kind=intType), intent(in) :: i
+
+      zone = cgnsDoms(i)%zoneName
+
+    end subroutine getCGNSZoneName
+
 #endif
 end module utils

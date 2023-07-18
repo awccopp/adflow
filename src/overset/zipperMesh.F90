@@ -39,21 +39,13 @@ contains
     use gapBoundaries
     use wallSearches, only : wallSearch
 
-#include <petscversion.h>
-#if PETSC_VERSION_GE(3,8,0)
 #include <petsc/finclude/petsc.h>
-    use petsc, only : PETSC_COPY_VALUES, PETSC_DETERMINE, PETSC_NULL_VEC
-  implicit none
-#else
-  implicit none
-#define PETSC_AVOID_MPIF_H
-#include "petsc/finclude/petsc.h"
-#include "petsc/finclude/petscvec.h90"
-#endif
+    use petsc
+    implicit none
 
     ! Input Parameters
-    integer(kind=intType), intent(in), dimension(nZipFam) :: zipperFamList
     integer(kind=intType), intent(in) :: nZipFam
+    integer(kind=intType), intent(in), dimension(nZipFam) :: zipperFamList
 
     ! Local Variables
     integer(kind=intType) :: i, j, k, ii, jj, kk, iStart, iSize, sps, level, iStr
@@ -490,7 +482,7 @@ contains
 
 #if PETSC_VERSION_GE(3,8,0)
        call VecScatterCreate(BCFamExchange(iBCGroup, sps)%nodeValLocal, IS1, &
-            zipper%localVal, PETSC_NULL_VEC, zipper%scatter, ierr)
+            zipper%localVal, PETSC_NULL_IS, zipper%scatter, ierr)
 #else
        call VecScatterCreate(BCFamExchange(iBCGroup, sps)%nodeValLocal, IS1, &
             zipper%localVal, PETSC_NULL_OBJECT, zipper%scatter, ierr)
@@ -585,6 +577,14 @@ contains
     type(oversetString), pointer :: str
     integer(kind=intType) :: nStrings, i, j, nTriSelf
 
+    if (debugZipper) then
+       open(unit=101, file="master_beforeStrings.dat", form='formatted')
+       write(101,*) 'TITLE = "Master Data" '
+       write(101,*) 'Variables = "X" "Y" "Z"'
+       call writeOversetMaster(master, 101)
+       close(101)
+    end if
+
     call createOrderedStrings(master, strings, nStrings)
 
 
@@ -625,7 +625,7 @@ contains
        open(unit=101, file="strings_beforeSelfZip.dat", form='formatted')
        write(101,*) 'TITLE = "Gap Strings Data" '
        write(101,*) 'Variables = "X" "Y" "Z" "Nx" "Ny" "Nz" "Vx" "Vy" "Vz" "ind" &
-            "gapID" "gapIndex" "otherID" "otherIndex" "ratio"'
+            &"gapID" "gapIndex" "otherID" "otherIndex" "ratio"'
        do i=1, nStrings
           call writeOversetString(strings(i), strings, nStrings, 101)
        end do
@@ -646,7 +646,7 @@ contains
        open(unit=101, file="strings_afterSelfZip.dat", form='formatted')
        write(101,*) 'TITLE = "Gap Strings Data" '
        write(101,*) 'Variables = "X" "Y" "Z" "Nx" "Ny" "Nz" "Vx" "Vy" "Vz" "ind" &
-            "gapID" "gapIndex" "otherID" "otherIndex" "ratio"'
+            &"gapID" "gapIndex" "otherID" "otherIndex" "ratio"'
        do i=1, nStrings
           call writeOversetString(strings(i), strings, nStrings, 101)
        end do
@@ -1231,15 +1231,15 @@ contains
   subroutine writeWalls(famList)
 
 
-    use communication
     !use oversetData
     use constants
     use blockPointers
     use utils, only : setPointers, setBCPointers
     use BCPointers, only : xx
     use sorting, only : famInList
-    use communication, only : myid, adflow_comm_world
+    use communication, only : myid, adflow_comm_world, nProc
     use utils, only : EChk
+    use commonFormats, only : sci12
     implicit none
     integer(kind=intType), intent(in), dimension(:) :: famList
     character(80) :: fileName, zoneName
@@ -1416,19 +1416,19 @@ contains
 
         character(80) :: zoneName
         integer(kind=intType) :: iDim
+        character(len=maxStringLen) :: zoneFormat
 
         write(zoneName, "(a,I5.5)") "Zone_", nBkGlobal
-110     format('ZONE T=',a, " I=", i5, " J=", i5)
-        write(101, 110), trim(zoneName), iEnd-iBeg+1, jEnd-jBeg+1
+        zoneFormat = "(3(A), I5, A, I5)"
+        write(101, zoneFormat) 'ZONE T=', trim(zoneName), " I=", iEnd-iBeg+1, " J=", jEnd-jBeg+1
         write (101,*) "DATAPACKING=BLOCK, VARLOCATION=([1,2,3]=NODAL, [4]=CELLCENTERED)"
-13      format (E20.12)
 
         ! The 3 is for the three coordinate directions
         nNode = (iEnd - iBeg + 1)*(jEnd - jBeg + 1)
         nCell = (iEnd - iBeg)*(jEnd - jBeg)
 
         do i=1, 3*nNode
-           write(101, 13) xx(i)
+           write(101, sci12) xx(i)
         end do
 
         do i=1, nCell

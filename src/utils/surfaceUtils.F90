@@ -18,7 +18,7 @@ contains
     logical, intent(in) :: includeZipper
     integer(kind=intType) :: nn, mm, i, j,iimax, shp(1)
     integer(kind=intType) :: iBeg, iEnd, jBeg, jEnd, iBCGroup
-    integer(kind=intType), intent(in) :: famList(n), n
+    integer(kind=intType), intent(in) :: n, famList(n)
     type(zipperMesh), pointer :: zipper
     logical :: BCGroupNeeded
     sizeNode = 0_intType
@@ -288,7 +288,7 @@ contains
     ! Input/Output
     integer(kind=intType), intent(in) :: ncell
     integer(kind=intType), intent(inout) :: elemFam(nCell)
-    integer(kind=intType), intent(in) :: famList(nFamList), nFamList
+    integer(kind=intType), intent(in) :: nFamList, famList(nFamList)
     logical, intent(in) :: includeZipper
 
     ! Working
@@ -378,17 +378,9 @@ contains
     use oversetData, only : zipperMeshes, zipperMesh, oversetPresent
     use sorting, only : famInList
     use utils, only : setPointers, EChk, setBCPointers
-#include <petscversion.h>
-#if PETSC_VERSION_GE(3,8,0)
 #include <petsc/finclude/petsc.h>
-  use petsc
-  implicit none
-#else
-  implicit none
-#define PETSC_AVOID_MPIF_H
-#include "petsc/finclude/petsc.h"
-#include "petsc/finclude/petscvec.h90"
-#endif
+    use petsc
+    implicit none
 
     !
     !      Local variables.

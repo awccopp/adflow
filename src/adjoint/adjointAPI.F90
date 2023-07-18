@@ -1,5 +1,11 @@
 module adjointAPI
 
+  use constants, only: realType, intType, alwaysRealType, adflow_real, mpi_max, mpi_sum, mpi_double_precision, &
+   mpi_integer, mpi_double_complex, mpi_wtime, maxStringLen, one, zero, NSEquations, RANSEquations
+
+  character(len=maxStringLen) :: timeFormat = "(A, 1X, F8.2)"
+  character(len=maxStringLen) :: exitFormat = "(1X, A, 1X, I5, 1X, A)"
+
 contains
 #ifndef USE_COMPLEX
   subroutine computeMatrixFreeProductFwd(xvdot, extradot, wdot, bcDataValuesdot, useSpatial, &
@@ -7,7 +13,6 @@ contains
        costSize, fSize, nTime)
 
     ! This is the main matrix-free forward mode computation
-    use constants
     use adjointvars
     use blockPointers, only : nDom
     use communication, only : adflow_comm_world
@@ -91,7 +96,6 @@ contains
   subroutine computeMatrixFreeProductBwd(dwbar, funcsBar, fbar, useSpatial, useState, xvbar, &
        extrabar, wbar, spatialSize, extraSize, stateSize, famLists, &
        bcDataNames, bcDataValues, bcDataValuesbar, bcDataFamLists, BCVarsEmpty)
-    use constants
     use communication, only : adflow_comm_world
     use blockPointers, only : nDom, dwd, il, jl, kl
     use inputTimeSpectral, only : nTimeIntervalsSpectral
@@ -180,12 +184,12 @@ contains
     ! mode computation. It is intended to compute dRdw^T product
     ! ONLY. The main purpose is for fast matrix-vector products for the
     ! actual adjoint solve.
-    use constants
     use inputPhysics, only : equations
     use inputAdjoint, only : frozenTurbulence
     use flowVarRefState, only : nw, nwf
     use iteration, only : currentLevel, groundLevel
     use masterRoutines, only : master_state_b, master_b
+    use adjointvars, only : derivVarsAllocated
     use blockpointers
     use inputtimespectral
     use adjointutils
@@ -232,6 +236,11 @@ contains
     ! of the fact that only wbar needs to be zeroed since all other
     ! required seeds are zeroed in the individual fast routines. This is
     ! slightly unsafe, but it necessary for speed.
+
+    ! Allocate the memory for reverse
+    if (.not. derivVarsAllocated) then
+      call allocDerivativeValues(level)
+    end if
      do nn=1,nDom
        do sps=1,nTimeIntervalsSpectral
           call zeroADSeeds(nn,level, sps)
@@ -261,7 +270,6 @@ contains
     use inputADjoint
     use adjointvars
     use killsignals
-    use constants
     use blockPointers
     use inputTimeSpectral
     use utils, only : EChk
@@ -269,10 +277,10 @@ contains
     implicit none
 
     ! Input Variables
+    integer(kind=intType), intent(in) :: nDOF
     real(kind=realType), dimension(ndof), intent(in) :: inVec
     real(kind=realType), dimension(ndof), intent(out) :: outVec
     real(kind=realType), intent(in) :: relativeTolerance
-    integer(kind=intType), intent(in) :: nDOF
     integer(kind=intTYpe) :: adjointConvergedReason
     ! Working variables
     integer(kind=intType) :: ierr, nn, sps
@@ -345,7 +353,6 @@ contains
     use ADJointPETSc
     use inputADjoint
     use adjointVars
-    use constants
     use killsignals
     use blockPointers
     use inputTimeSpectral
@@ -354,10 +361,10 @@ contains
     implicit none
 
     ! Input Variables
+    integer(kind=intType), intent(in) :: nDOF
     real(kind=realType), dimension(ndof), intent(in) :: inVec
     real(kind=realType), dimension(ndof), intent(out) :: outVec
     real(kind=realType), intent(in) :: relativeTolerance
-    integer(kind=intType), intent(in) :: nDOF
     integer(kind=intTYpe) :: adjointConvergedReason
     ! Working variables
     integer(kind=intType) :: ierr, nn, sps
@@ -425,23 +432,15 @@ contains
 
   subroutine saveADjointMatrix(fileName)
 
-    use constants
     use ADjointPETSc, only: drdwt
     use communication, only : adflow_comm_world
     use utils, only : EChk
-#include <petscversion.h>
-#if PETSC_VERSION_GE(3,8,0)
 #include <petsc/finclude/petsc.h>
-  use petsc
-  implicit none
-#else
-  implicit none
-#define PETSC_AVOID_MPIF_H
-#include "petsc/finclude/petsc.h"
-#endif
+    use petsc
+    implicit none
 
     ! Input params
-    character*(*), intent(in) :: fileName
+    character(len=*), intent(in) :: fileName
 
     ! Working parameters
     PetscViewer binViewer
@@ -460,23 +459,15 @@ contains
 
   subroutine saveAdjointPC(fileName)
 
-    use constants
     use ADjointPETSc, only: drdwpret
     use communication, only : adflow_comm_world
     use utils, only : EChk
-#include <petscversion.h>
-#if PETSC_VERSION_GE(3,8,0)
 #include <petsc/finclude/petsc.h>
-  use petsc
-  implicit none
-#else
-  implicit none
-#define PETSC_AVOID_MPIF_H
-#include "petsc/finclude/petsc.h"
-#endif
+    use petsc
+    implicit none
 
     ! Input params
-    character*(*), intent(in) :: fileName
+    character(len=*), intent(in) :: fileName
 
     ! Working parameters
     PetscViewer binViewer
@@ -495,25 +486,17 @@ contains
 
   subroutine saveAdjointRHS(RHS, fileName, nstate)
 
-    use constants
     use ADjointPETSc, only: psi_like1
     use communication, only : adflow_comm_world
     use utils, only : EChk
-#include <petscversion.h>
-#if PETSC_VERSION_GE(3,8,0)
 #include <petsc/finclude/petsc.h>
-  use petsc
-  implicit none
-#else
-  implicit none
-#define PETSC_AVOID_MPIF_H
-#include "petsc/finclude/petsc.h"
-#endif
+    use petsc
+    implicit none
 
     ! Input params
-    character*(*), intent(in) :: fileName
-    real(kind=realType), dimension(nState) :: RHS
+    character(len=*), intent(in) :: fileName
     integer(kind=intType) :: nstate
+    real(kind=realType), dimension(nState) :: RHS
 
     ! Working parameters
     PetscViewer binViewer
@@ -540,7 +523,6 @@ contains
 
   subroutine spectralPrecscribedMotion(input, nin, dXv, nout)
 
-    use constants
     use blockPointers, only : il, jl, kl, nDom
     use section, only : sections, nSections
     use inputTimeSpectral, only : nTimeIntervalsSpectral
@@ -640,7 +622,6 @@ contains
 
   subroutine setupAllResidualMatricesfwd
 
-    use constants
     use ADjointPETSc, only : dRdwT
     use communication, only : adflow_comm_world, myid
     use inputADjoint, only : frozenTurbulence, useMatrixFreedRdw
@@ -662,7 +643,7 @@ contains
 
     if (.not. useMatrixFreedRdw) then
        if( myid ==0 ) then
-          write(*, 10) "Assembling State Residual Matrix in Forward mode..."
+          write(*, "(A)") "Assembling State Residual Matrix in Forward mode..."
        end if
        time(1) = mpi_wtime()
        call setupStateResidualMatrix(drdwT, useAD, usePC, useTranspose, &
@@ -675,13 +656,9 @@ contains
        call EChk(ierr,  __FILE__, __LINE__)
 
        if(myid ==0)  then
-          write(*, 20) "Assembling State Residaul Matrices Fwd time (s) = ", timeAdj
+          write(*, timeFormat) "Assembling State Residaul Matrices Fwd time (s) = ", timeAdj
        end if
     end if
-
-    ! Output formats.
-10  format(a)
-20  format(a, 1x, f8.2)
 
   end subroutine setupAllResidualMatricesfwd
 
@@ -693,50 +670,42 @@ contains
     !      are significant as they are used as the inital guess.
     !
 
-    use constants, only : realType, intType, alwaysRealType, one, adflow_real, &
-         mpi_max, mpi_sum, mpi_double_precision, mpi_integer, mpi_double_complex
     use ADjointPETSc, only : dRdwT, psi_like1, psi_like2, adjointKSP, &
          adjResInit, adjResStart, adjResFinal
 
     use killsignals, only : adjointFailed
     use inputADjoint, only : adjAbsTol, adjDivTol, adjMaxIter, adjRelTol, &
-         adjRelTolRel, printTiming
+         adjRelTolRel, adjMaxL2Dev, printTiming
     use adjointVars, only: derivVarsAllocated
     use communication, only : myid, adflow_comm_world
     use blockPointers, only : nDom
     use inputTimeSpectral, only : nTimeIntervalsSpectral
     use adjointUtils, only : allocDerivativeValues, zeroADSeeds
     use utils, only : EChk
-#include <petscversion.h>
-#if PETSC_VERSION_GE(3,8,0)
 #include <petsc/finclude/petsc.h>
-  use petsc
-  implicit none
-#else
-#define PETSC_AVOID_MPIF_H
-#include "petsc/finclude/petsc.h"
-#include "petsc/finclude/petscvec.h90"
-#endif
+    use petsc
+    implicit none
 
     ! Input Parameters
-    real(kind=realType), dimension(nState) :: RHS, psi
     integer(kind=intType) :: nState
+    real(kind=realType), dimension(nState) :: RHS, psi
     logical :: checkSolution
     !
     !     Local variables.
     real(kind=alwaysRealType)   :: norm
     real(kind=alwaysRealType), dimension(2) :: time
     real(kind=alwaysRealType)               :: timeAdjLocal, timeAdj
-    real(kind=realType) :: l2abs, l2rel
+    real(kind=alwaysRealType) :: l2abs, l2rel
     integer(kind=intType) :: ierr, nn, sps
     integer(kind=intType) :: adjConvIts
     KSPConvergedReason adjointConvergedReason
     Vec adjointRes, RHSVec
 
+#ifndef USE_COMPLEX
     ! Send some feedback to screen.
 
     if(myid ==0 .and. printTiming)  &
-         write(*,10) "Solving ADjoint Transpose with PETSc..."
+         write(*, "(A)") "Solving ADjoint Transpose with PETSc..."
 
     call cpu_time(time(1))
 
@@ -836,8 +805,7 @@ contains
        ! Determine the maximum time using MPI reduce
        ! with operation mpi_max.
 
-       ! call mpi_reduce(timeAdjLocal, timeAdj, 1, adflow_real, &
-       !      mpi_max, 0, ADFLOW_COMM_WORLD, ierr)
+       call mpi_reduce(timeAdjLocal, timeAdj, 1, adflow_real, mpi_max, 0, ADFLOW_COMM_WORLD, ierr)
 
        call MatMult(dRdWT, psi_like1, adjointRes, ierr)
        call EChk(ierr,__FILE__,__LINE__)
@@ -856,15 +824,13 @@ contains
        ! the norm of error and the number of iterations
 
        if( myid ==0 .and. printTiming) then
-          write(*,20) "Solving ADjoint Transpose with PETSc time (s) =", timeAdj
-          write(*,30) "Norm of error =",norm,"Iterations =",adjConvIts
+          write(*, timeFormat) "Solving ADjoint Transpose with PETSc time (s) =", timeAdj
+          write(*, "(1X, A, 1X, ES10.4, 4X, A, 1X, I4)") "Norm of error =",norm,"Iterations =",adjConvIts
           write(*,*) "------------------------------------------------"
           if( adjConvIts.lt.0 ) then
-             write(*,40) "PETSc solver diverged after", -adjConvIts, &
-                  "iterations..."
+             write(*, exitFormat) "PETSc solver diverged after", -adjConvIts, "iterations..."
           else
-             write(*,40) "PETSc solver converged after", adjConvIts, &
-                  "iterations."
+            write(*, exitFormat) "PETSc solver converged after", adjConvIts, "iterations."
           endif
           write(*,*) "------------------------------------------------"
        endif
@@ -889,18 +855,14 @@ contains
 
     if (adjointConvergedReason ==  KSP_CONVERGED_RTOL .or. &
          adjointConvergedReason ==  KSP_CONVERGED_ATOL .or. &
-         adjointConvergedReason ==  KSP_CONVERGED_HAPPY_BREAKDOWN) then
+         adjointConvergedReason ==  KSP_CONVERGED_HAPPY_BREAKDOWN .or. &
+         adjResFinal / adjResStart < L2Rel * adjMaxL2Dev) then
        adjointFailed = .False.
     else
        adjointFailed = .True.
     end if
 
-    ! Output formats.
-
-10  format(a)
-20  format(a,1x,f8.2)
-30  format(1x,a,1x,e10.4,4x,a,1x,i4)
-40  format(1x,a,1x,i5,1x,a)
+#endif
 
   end subroutine solveAdjoint
 
@@ -913,16 +875,9 @@ contains
     use adjointUtils, only : setupStateResidualMatrix, setupStandardKSP, setupStandardMultigrid
     use communication
     use agmg, only : setupShellPC, destroyShellPC, applyShellPC
-#include <petscversion.h>
-#if PETSC_VERSION_GE(3,8,0)
 #include <petsc/finclude/petsc.h>
-  use petsc
-  implicit none
-#else
-  implicit none
-#define PETSC_AVOID_MPIF_H
-#include "petsc/finclude/petsc.h"
-#endif
+    use petsc
+    implicit none
 
     !     Local variables.
     logical :: useAD, usePC, useTranspose, useObjective, useCoarseMats
@@ -965,7 +920,7 @@ contains
             matrixOrdering, FillLevel, innerPreConIts)
     else if (PreCondType == 'mg') then
 
-       call setupStandardMultigrid(adjointKSP, ADjointSolverType, adjRestart, & 
+       call setupStandardMultigrid(adjointKSP, ADjointSolverType, adjRestart, &
             adjointPCSide, overlap, outerPreconIts, matrixOrdering,  fillLevel)
     end if
 
@@ -987,20 +942,12 @@ contains
     use adjointVars, only: nCellsLocal
     use communication
     use utils, only : setPointers, EChk
-#include <petscversion.h>
-#if PETSC_VERSION_GE(3,8,0)
 #include <petsc/finclude/petsc.h>
     use petsc
     implicit none
-#else
-    implicit none
-#define PETSC_AVOID_MPIF_H
-#include "petsc/finclude/petsc.h"
-#include "petsc/finclude/petscvec.h90"
-#endif
 
     ! Input params
-    character*(*), intent(in) :: fileName
+    character(len=*), intent(in) :: fileName
 
     ! Working parameters
     PetscViewer binViewer
@@ -1065,7 +1012,6 @@ contains
     ! dRdwT with a vector. Here we just call the much more broadly
     ! useful routine computeMatrixFreeProductBwdFast()
 
-    use constants
     use communication
     use blockPointers
     use iteration
@@ -1074,17 +1020,9 @@ contains
     use ADjointVars
     use inputTimeSpectral
     use utils, only : EChk
-#include <petscversion.h>
-#if PETSC_VERSION_GE(3,8,0)
 #include <petsc/finclude/petsc.h>
-  use petsc
-  implicit none
-#else
-  implicit none
-#define PETSC_AVOID_MPIF_H
-#include "petsc/finclude/petsc.h"
-#include "petsc/finclude/petscvec.h90"
-#endif
+    use petsc
+    implicit none
 
 
     ! PETSc Arguments
@@ -1118,7 +1056,6 @@ contains
     ! dRdw with a vector. Here we just call the much more broadly
     ! useful routine computeMatrixFreeProductFwd()
 
-    use constants
     use communication
     use blockPointers
     use iteration
@@ -1133,17 +1070,9 @@ contains
 #ifndef USE_COMPLEX
     use masterRoutines, only : master_d
 #endif
-#include <petscversion.h>
-#if PETSC_VERSION_GE(3,8,0)
 #include <petsc/finclude/petsc.h>
-  use petsc
-  implicit none
-#else
-  implicit none
-#define PETSC_AVOID_MPIF_H
-#include "petsc/finclude/petsc.h"
-#include "petsc/finclude/petscvec.h90"
-#endif
+    use petsc
+    implicit none
 
     ! PETSc Arguments
     Mat   A
@@ -1205,7 +1134,6 @@ contains
     !
     !      Create the matrices/vectors that are required for the adjoint
     !
-    use constants
     use ADjointPETSc, only: dRdwT, dRdwPreT, &
          adjointKSP, matfreectx, x_like, psi_like1, adjointPETScVarsAllocated
     use ADjointVars
@@ -1218,17 +1146,9 @@ contains
     use utils, only : EChk, setPointers
     use adjointUtils, only : myMatCreate, destroyPETScVars, statePreAllocation
     use agmg, only : setupAGMG
-#include <petscversion.h>
-#if PETSC_VERSION_GE(3,8,0)
 #include <petsc/finclude/petsc.h>
-  use petsc
-  implicit none
-#else
-  implicit none
-#define PETSC_AVOID_MPIF_H
-#include "petsc/finclude/petsc.h"
-#include "petsc/finclude/petscvec.h90"
-#endif
+    use petsc
+    implicit none
 
     !     Local variables.
     integer(kind=intType)  :: nDimW, nDimX
@@ -1254,7 +1174,7 @@ contains
     nDimW = nState * nCellsLocal(1_intType)*nTimeIntervalsSpectral
     nDimX = 3 * nNodesLocal(1_intType)*nTimeIntervalsSpectral
 
-   
+
     if (.not. useMatrixFreedRdw) then
        ! Setup matrix-based dRdwT
        allocate(nnzDiagonal(nCellsLocal(1_intType)*nTimeIntervalsSpectral), &
@@ -1324,7 +1244,7 @@ contains
        deallocate(nnzDiagonal, nnzOffDiag)
     end if
 
-   
+
     call setupAGMG(drdwpret, nDimW/nState, nState)
 
     ! Create the KSP Object

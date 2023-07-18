@@ -1600,7 +1600,14 @@ contains
              do i=0,ib
                 ii =ii + 1
                 iBlankSave(ii) = iblank(i,j,k)
-                iblank(i,j,k) = 0
+                ! The following algorithm uses the volume iblank array to communicate surface blocking
+                ! across block boundaries. However, for h-topology meshes, for example at a sharp
+                ! trailing edge this breaks, because the surface on the top an bottom of the shape are
+                ! not topologically adjacent in the block structure. If we leave the existing volume
+                ! blanking in place the correct values are communicated, if we zero it as done originally
+                ! the connection is broken. Therefore the following line is commented out.
+                !iblank(i,j,k) = 0 !commented out to fix issue with h-topology blocks on the zipper
+                
              end do
           end do
        end do
@@ -1733,7 +1740,7 @@ contains
     ! mesh. It does *not* completely redo the connectivity. Rather, a
     ! newton search on the existing donors are performed using the
     ! updated coordinates. This type of update is only applicable if the
-    ! entire volume mesh is warped as one a-la pyWarpUstruct. This
+    ! entire volume mesh is warped as one like with USMesh in IDWarp. This
     ! actually ends up being a fairly small correction most of the time,
     ! however, desipite looks to the contrary is actually quite fast to
     ! run.
@@ -1759,6 +1766,9 @@ contains
     integer, dimension(mpi_status_size) :: mpiStatus
     real(kind=realType) :: frac(3), frac0(3), xCen(3)
     integer(kind=intType), dimension(8), parameter :: indices=(/1,2,4,3,5,6,8,7/)
+
+    ! Set a tolerance for checking whether fractions are between 0 and 1
+    real(kind=realType) :: fracTol=1e-4
 
     ! Pointers to the overset comms to make it easier to read
     commPattern => commPatternOverset(level, sps)
@@ -1906,6 +1916,12 @@ contains
        call newtonUpdate(xCen, &
             flowDoms(d1, level, sps)%x(i1-1:i1+1, j1-1:j1+1, k1-1:k1+1, :), frac0, frac)
 
+       ! Check if the fractions are between 0 and 1
+       if (MAXVAL(frac) > one + fracTol .or. MINVAL(frac) < zero - fracTol) then
+          print *, "Invalid overset connectivity update. Use 'frozen' or 'full' oversetUpdateMode instead."
+          error stop
+       end if
+
        ! Set the new weights
        call fracToWeights(frac, internal%donorInterp(i, :))
     enddo localInterp
@@ -1943,6 +1959,12 @@ contains
           frac0 = (/half, half, half/)
           call newtonUpdate(xCen, &
                flowDoms(d2, level, sps)%x(i2-1:i2+1, j2-1:j2+1, k2-1:k2+1, :), frac0, frac)
+
+          ! Check if the fractions are between zero and one
+          if (MAXVAL(frac) > one + fracTol .or. MINVAL(frac) < zero - fracTol) then
+             print *, "Invalid overset connectivity update. Use 'frozen' or 'full' oversetUpdateMode instead."
+             error stop
+          end if
 
           ! Set the new weights
           call fracToWeights(frac, commPattern%sendList(ii)%interp(j, :))

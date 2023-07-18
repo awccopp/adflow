@@ -157,6 +157,43 @@ contains
 
   end subroutine setGrid
 
+  subroutine setGridForOneInstance(grid,sps)
+
+    ! The purpose of this routine is to set the grid dof as returned by
+    ! the external warping. This routine will take in the deformed mesh
+    ! and set it to "sps"th time instance
+    use constants
+    use blockPointers, only : nDom, il, jl, kl, x
+    use section, only : sections, nSections
+    use inputPhysics, only : equationMode
+    use utils, only : setPointers
+    use preprocessingAPI, only : xhalo
+    implicit none
+
+    real(kind=realType) ,dimension(:), intent(in) :: grid
+    integer, intent(in) :: sps
+
+    ! Local Variables
+
+    integer(kind=intType) :: nn,i,j,k,counter
+
+    counter = 0
+    do nn=1,nDom
+       call setPointers(nn,1_intType,sps)
+       do k=1,kl
+          do j=1,jl
+             do i=1,il
+                X(i,j,k,:) = grid(3*counter+1:3*counter+3)
+                counter = counter + 1
+             end do
+          end do
+       end do
+    end do
+    call xhalo(1_intType)
+
+  end subroutine setGridForOneInstance
+
+
   subroutine getGrid(grid,ndof)
 
     ! Opposite of setGrid. This is ONLY a debugging function. NOT used
@@ -207,8 +244,8 @@ contains
     implicit none
 
     ! Input Parameters
-    real(kind=realType), intent(in), dimension(nRand) :: randVec
     integer(kind=intType), intent(in) :: nRand, nRandState
+    real(kind=realType), intent(in), dimension(nRand) :: randVec
 
     ! Ouput Parameters
     real(kind=realType), intent(out), dimension(nRandState) :: randState
@@ -272,23 +309,14 @@ contains
     use sorting, only : famInList
     use oversetData, only : zipperMeshes, zipperMesh, oversetPresent
     use surfaceFamilies, only : BCFamGroups, familyExchange, BCFamExchange
-#include <petscversion.h>
-#if PETSC_VERSION_GE(3,8,0)
 #include <petsc/finclude/petsc.h>
-  use petsc
-  implicit none
-#else
-  implicit none
-#define PETSC_AVOID_MPIF_H
-#include "petsc/finclude/petscsys.h"
-#include "petsc/finclude/petscvec.h"
-#include "petsc/finclude/petscvec.h90"
-#endif
+    use petsc
+    implicit none
 
     ! Input Parameters
-    real(kind=realType), intent(in), dimension(nRand) :: xRand
     integer(kind=intType), intent(in) :: nRand, nRandSurface
-    integer(kind=intType), intent(in) :: famList(nFamList), nFamList, sps
+    real(kind=realType), intent(in), dimension(nRand) :: xRand
+    integer(kind=intType), intent(in) :: nFamList, famList(nFamList), sps
     ! Ouput Parameters
     real(kind=realType), intent(inout), dimension(3*nRandSurface) :: randSurface
 

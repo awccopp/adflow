@@ -2,29 +2,38 @@
 
 Installation
 ============
-All the core computations in ``ADflow`` are coded in Fortran.
-It is therefore necessary to build this library before using ``ADflow``.
+All the core computations in ADflow are coded in Fortran.
+It is therefore necessary to build this library before using ADflow.
 
 Requirements
 ------------
-See :ref:`install3rdPartyPackages` for details on installing required 3rd party packages.
+ADflow requires the following dependencies:
+- CGNS Library
+- PETSc
+- MPI
+
+See the MDO Lab installation guide `here <https://mdolab-mach-aero.readthedocs-hosted.com/en/latest/installInstructions/install3rdPartyPackages.html>`_ for the supported versions and installation instructions.
 
 Building
 --------
-To see a list of architectures that ``ADflow`` has been known to
-compile on run::
+ADflow follows the standard MDO Lab build procedure.
+To start, find a configuration file close to your current setup in::
 
-   make
+    $ config/defaults
 
-from the root directory.
+and copy it to ''config/config.mk''. For example::
 
-The easiest approach to to try the closest one to your system and
-attempt a build using (for example)::
+    $ cp config/defaults/config.LINUX_GFORTRAN.mk config/config.mk
 
-   make LINUX_INTEL_OPENMPI
+If you are a beginner user installing the packages on a linux desktop, 
+you should use the ``config.LINUX_GFORTRAN`` versions of the configuration 
+files. The ``config.LINUX_INTEL`` versions are usually used on clusters.
+ADflow has been successfully compiled on LINUX with either
+``ifort`` or ``gfortran``.
 
-ADflow has been successfully compiled on LINUX, and OS X with either
-ifort or gfortran.
+Once you have copied the config file, compile ADflow by running::
+
+    $ make
 
 If everything was successful, the following lines will be printed to
 the screen (near the end)::
@@ -32,44 +41,55 @@ the screen (near the end)::
    Testing if module adflow can be imported...
    Module adflow was successfully imported.
 
-If you don't see this, it will be necessary to configure the build
-manually. To configure manually, first copy a default configuration
-file from the defaults folder like this (run this in the root
-directory)::
-
-   cp config/defaults/config.LINUX_INTEL_OPENMPI.mk config/config.mk
-
-Now open ``config/config.LINUX_INTEL_OPENMPI.mk``.
+If you don't see this, it will be necessary to configure the build manually.
+To configure manually, open ``config/config.mk`` and modify options as necessary.
 
 It is most likely that you need to modify the ``CGNS_INCLUDE_FLAGS`` and the ``CGNS_LINKER_FLAGS`` variables.
-It is also necessary to have``PETSc`` already compiled including support for ``SuperLU_dist``.
 After changes to the configuration file, run ``make clean`` before attempting a new build.
+
+.. NOTE::
+
+    Compiling ADflow on HPC clusters requires additional care, as some systems do not have a homogeneous CPU architecture across all nodes.
+    For example, the architecture of the login nodes may differ from the architecture of compute nodes available on the same cluster. 
+
+    Compiling the code on/for a specific login node type may result in unexpected crashes if the compute nodes have an incompatible (newer) architecture.
+    You can append the ``-march=<HPC-ARCH>`` flag to the ``config.mk`` file to specify the architecture of the compute node and avoid such issues. 
+    To optimize the compiled code for a specific architecture, one can add the ``-mtune=<HPC-ARCH>`` flag. However, this is rarely needed. 
+    An example of the updated flags in the config file is:: 
+
+        FF90_FLAGS = <normal-flags> -march=<HPC-ARCH> -mtune=<HPC-ARCH>
+
+    Note that the ``<HPC-ARCH>`` should be replaced with the name of the correct compute node architecture. This name is compiler-specific and also depends on the compiler version.
+
+    For example, if the login nodes use newer Cascade Lake CPUs while the compute nodes are based on older Sandy Bridge CPUs it may be necessary to set ``-march=sandybridge`` in your ``config.mk`` file::
+
+        FF90_FLAGS = <normal-flags> -march=sandybridge
+
+    We recommend to contact your local HPC team to get more information about hardware specific issues. 
+
+Lastly, to build and install the Python interface, type::
+
+    pip install .
+
 
 Verification
 ------------
-ADflow contains a set of simple tests that can be run automatically
-to ensure ADflow reproduces the expected reference results. You should
-a diff-viewer installed. xxdiff is used by default which can be installed
-using::
+ADflow contains a set of simple tests that can be run automatically to ensure ADflow reproduces the expected reference results.
+First, install `idwarp <https://github.com/mdolab/idwarp/>`__ following the instructions there.
+Next, install the testing dependencies by going to the root ADflow directory and typing::
 
-    $ sudo apt-get install xxdiff
+    $ pip install .[testing]
 
-Change to the regression tests directory at::
+With all of these packages installed, you can fully verify your ADflow installation.
+First, run the script::
 
-    $ cd python/reg_tests/
+    $ input_files/get-input-files.sh
 
-Command line arguemnts for run_reg_tests.py can be found by running::
+to download and extract the necessary files.
+Then in the root directory run::
 
-    $ python run_reg_tests.py --help
+    $ testflo .
 
-To run all regression tests, now simply run::
-
-    $ python run_reg_tests.py
-
-If the tests are successful a 'adflow: Success!' message
-will be printed, otherwise a diff window will appear hihglighting
-the differences between the reference case and the most recently
-completed verification run.
 
 Complex Build
 -------------
@@ -80,15 +100,19 @@ ADflow_CS REQUIRES a complex build of petsc to build and run. The
 petsc configuration script must be re-run with the following
 options::
 
-    $ ./configure --with-shared-libraries --download-superlu_dist=yes --download-parmetis=yes --download-metis=yes --with-fortran-interfaces=1 --with-debuggig=yes --with-scalar-type=complex --PETSC_ARCH=complex-debug
+    $ ./configure --with-shared-libraries --download-superlu_dist=yes --download-parmetis=yes --download-metis=yes --with-fortran-interfaces=1 --with-debugging=yes --with-scalar-type=complex --PETSC_ARCH=complex-debug
 
 Follow instructions as before to complete complex build.
 
 Now, to build complex ADflow do::
 
     $ export PETSC_ARCH=complex-debug
-    $ make -f Makefile_CS <ARCH>
+    $ make -f Makefile_CS
 
-where arch is the same architecture used for the real version. Note
-that the correct, complex PETSC_ARCH MUST be set before the code is
+Note that the correct, complex PETSC_ARCH MUST be set before the code is
 compiled and also must be set when running in complex mode.
+
+To run the complex tests, first set the ``$PETSC_ARCH`` to the complex architecture.
+Then run::
+
+    $ testflo . -m "cmplx_test*"

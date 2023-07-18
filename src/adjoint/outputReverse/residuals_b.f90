@@ -37,6 +37,7 @@ contains
 ! for loops of ale
     integer(kind=inttype) :: iale, jale, kale, lale, male
     real(kind=realtype), parameter :: k1=1.05_realtype
+! the line below is only used for the low-speed preconditioner part of this routine
 ! random given number
     real(kind=realtype), parameter :: k2=0.6_realtype
 ! mach number preconditioner activation
@@ -172,12 +173,34 @@ contains
           do i=2,il
 !    compute speed of sound
             sos = sqrt(gamma(i, j, k)*p(i, j, k)/w(i, j, k, irho))
-! coompute velocities without rho from state vector
+! compute velocities without rho from state vector 
+!      (w is pointer.. see type blocktype setup in block.f90)
+!      w(0:ib,0:jb,0:kb,1:nw) is allocated in block.f90 
+!      these are per definition nw=[rho,u,v,w,rhoee] 
+!      so the velocity is simply just taken out below... 
+!      we do not have to divide with rho since it is already 
+!      without rho... 
+! ivx: l. 60 in constants.f90
             velxrho = w(i, j, k, ivx)
             velyrho = w(i, j, k, ivy)
             velzrho = w(i, j, k, ivz)
             q = velxrho**2 + velyrho**2 + velzrho**2
             resm = sqrt(q)/sos
+! resm above is used as m_a (thesis) and m (paper 2015) 
+! and is the free stream mach number 
+! see routine setup above: 
+! l. 30: real(kind=realtype), parameter :: k1 = 1.05_realtype 
+! random given number for k2: 
+! l. 31: real(kind=realtype), parameter :: k2 = 0.6_realtype 
+! mach number preconditioner activation for k3: 
+! l. 32: real(kind=realtype), parameter :: m0 = 0.2_realtype 
+! 
+!    compute k3 
+! eq. 2.7 in garg 2015. k1, m0 and resm are scalars 
+! 
+! unfortunately, garg has switched the k1 and k3 here in the 
+! code. in both paper and thesis it is k3 that is used to det- 
+! ermine k1 below 
 !
 !    compute k3
             k3 = k1*(1+(1-k1*m0**2)*resm**2/(k1*m0**4))
@@ -192,6 +215,9 @@ contains
             else
               betamr2 = x1
             end if
+! above, the winf is the free stream velocity 
+! 
+! should this first line's first element have sos^4 or sos^2  
             a11 = betamr2*(1/sos**4)
             a12 = zero
             a13 = zero
@@ -212,6 +238,7 @@ contains
             a43 = zero
             a44 = one*w(i, j, k, irho)
             a45 = zero + one*(-velzrho)/sos**2
+! mham: seems he fixed the above line an irregular way?
             a51 = one*(1/(gamma(i, j, k)-1)+resm**2/2)
             a52 = one*w(i, j, k, irho)*velxrho
             a53 = one*w(i, j, k, irho)*velyrho
@@ -291,6 +318,8 @@ contains
         end do
       end do
     else
+! end of lowspeedpreconditioners three cells loops
+! else.. i.e. if we do not have preconditioner turned on...
       do l=1,nwf
         do k=2,kl
           do j=2,jl
@@ -309,12 +338,13 @@ contains
     end if
   end subroutine residual_block
 !  differentiation of sourceterms_block in reverse (adjoint) mode (with options i4 dr8 r8 noisize):
-!   gradient     of useful results: uref pref *dw *w actuatorregions.f
-!                plocal
-!   with respect to varying inputs: uref pref *dw *w actuatorregions.f
-!                plocal
+!   gradient     of useful results: uref pref *dw *w actuatorregions.force
+!                actuatorregions.heat plocal
+!   with respect to varying inputs: uref pref *dw *w actuatorregions.force
+!                actuatorregions.heat plocal
 !   rw status of diff variables: uref:incr pref:incr *dw:in-out
-!                *w:incr actuatorregions.f:incr plocal:in-out
+!                *w:incr actuatorregions.force:incr actuatorregions.heat:incr
+!                plocal:in-out
 !   plus diff mem management of: dw:in w:in
   subroutine sourceterms_block_b(nn, res, iregion, plocal, plocald)
 ! apply the source terms for the given block. assume that the
@@ -322,7 +352,7 @@ contains
     use constants
     use actuatorregiondata
     use blockpointers, only : volref, dw, dwd, w, wd
-    use flowvarrefstate, only : pref, prefd, uref, urefd
+    use flowvarrefstate, only : pref, prefd, uref, urefd, lref
     use communication
     use iteration, only : ordersconverged
     implicit none
@@ -333,11 +363,16 @@ contains
     real(kind=realtype) :: plocald
 ! working
     integer(kind=inttype) :: i, j, k, ii, istart, iend
-    real(kind=realtype) :: ftmp(3), vx, vy, vz, fact(3), redim, factor, &
-&   ostart, oend
-    real(kind=realtype) :: ftmpd(3), vxd, vyd, vzd, factd(3), redimd
-    real(kind=realtype) :: tempd(3)
+    real(kind=realtype) :: ftmp(3), vx, vy, vz, f_fact(3), q_fact, qtmp&
+&   , redim, factor, ostart, oend
+    real(kind=realtype) :: ftmpd(3), vxd, vyd, vzd, f_factd(3), q_factd&
+&   , qtmpd, redimd
+    real(kind=realtype) :: temp0
+    real(kind=realtype) :: tempd
+    real(kind=realtype) :: tempd2
+    real(kind=realtype) :: tempd1(3)
     real(kind=realtype) :: tempd0
+    real(kind=realtype) :: temp
     redim = pref*uref
 ! compute the relaxation factor based on the ordersconverged
 ! how far we are into the ramp:
@@ -353,23 +388,26 @@ contains
       factor = (ordersconverged-ostart)/(oend-ostart)
     end if
 ! compute the constant force factor
-    fact = factor*actuatorregions(iregion)%f/actuatorregions(iregion)%&
-&     volume/pref
+    f_fact = factor*actuatorregions(iregion)%force/actuatorregions(&
+&     iregion)%volume/pref
+! heat factor. this is heat added per unit volume per unit time
 ! loop over the ranges for this block
     istart = actuatorregions(iregion)%blkptr(nn-1) + 1
     iend = actuatorregions(iregion)%blkptr(nn)
+    q_factd = 0.0_8
     redimd = 0.0_8
-    factd = 0.0_8
+    f_factd = 0.0_8
     do ii=istart,iend
 ! extract the cell id.
       i = actuatorregions(iregion)%cellids(1, ii)
       j = actuatorregions(iregion)%cellids(2, ii)
       k = actuatorregions(iregion)%cellids(3, ii)
 ! this actually gets the force
-      ftmp = volref(i, j, k)*fact
+      ftmp = volref(i, j, k)*f_fact
       vx = w(i, j, k, ivx)
       vy = w(i, j, k, ivy)
       vz = w(i, j, k, ivz)
+! this gets the heat addition rate
       if (res) then
         ftmpd = 0.0_8
         ftmpd(1) = ftmpd(1) - vx*dwd(i, j, k, irhoe)
@@ -378,28 +416,39 @@ contains
         vyd = -(ftmp(2)*dwd(i, j, k, irhoe))
         ftmpd(3) = ftmpd(3) - vz*dwd(i, j, k, irhoe)
         vzd = -(ftmp(3)*dwd(i, j, k, irhoe))
+        qtmpd = -dwd(i, j, k, irhoe)
         ftmpd = ftmpd - dwd(i, j, k, imx:imz)
       else
         ftmpd = 0.0_8
-        tempd0 = redim*plocald
-        vxd = ftmp(1)*tempd0
-        ftmpd(1) = ftmpd(1) + vx*tempd0
-        vyd = ftmp(2)*tempd0
-        ftmpd(2) = ftmpd(2) + vy*tempd0
-        vzd = ftmp(3)*tempd0
-        ftmpd(3) = ftmpd(3) + vz*tempd0
+        tempd2 = redim*plocald
+        vxd = ftmp(1)*tempd2
+        ftmpd(1) = ftmpd(1) + vx*tempd2
+        vyd = ftmp(2)*tempd2
+        ftmpd(2) = ftmpd(2) + vy*tempd2
+        vzd = ftmp(3)*tempd2
+        ftmpd(3) = ftmpd(3) + vz*tempd2
         redimd = redimd + (vx*ftmp(1)+vy*ftmp(2)+vz*ftmp(3))*plocald
+        qtmpd = 0.0_8
       end if
+      q_factd = q_factd + volref(i, j, k)*qtmpd
       wd(i, j, k, ivz) = wd(i, j, k, ivz) + vzd
       wd(i, j, k, ivy) = wd(i, j, k, ivy) + vyd
       wd(i, j, k, ivx) = wd(i, j, k, ivx) + vxd
-      factd = factd + volref(i, j, k)*ftmpd
+      f_factd = f_factd + volref(i, j, k)*ftmpd
     end do
-    tempd = factor*factd/(actuatorregions(iregion)%volume*pref)
-    actuatorregionsd(iregion)%f = actuatorregionsd(iregion)%f + tempd
+    tempd1 = factor*f_factd/(actuatorregions(iregion)%volume*pref)
+    temp0 = actuatorregions(iregion)%volume*lref**2
+    temp = temp0*pref*uref
+    tempd = factor*q_factd/temp
+    tempd0 = -(actuatorregions(iregion)%heat*temp0*tempd/temp)
+    actuatorregionsd(iregion)%heat = actuatorregionsd(iregion)%heat + &
+&     tempd
     prefd = prefd + actuatorregions(iregion)%volume*sum(-(&
-&     actuatorregions(iregion)%f*tempd/(actuatorregions(iregion)%volume*&
-&     pref)))
+&     actuatorregions(iregion)%force*tempd1/(actuatorregions(iregion)%&
+&     volume*pref))) + uref*tempd0
+    urefd = urefd + pref*tempd0
+    actuatorregionsd(iregion)%force = actuatorregionsd(iregion)%force + &
+&     tempd1
     prefd = prefd + uref*redimd
     urefd = urefd + pref*redimd
   end subroutine sourceterms_block_b
@@ -409,7 +458,7 @@ contains
     use constants
     use actuatorregiondata
     use blockpointers, only : volref, dw, w
-    use flowvarrefstate, only : pref, uref
+    use flowvarrefstate, only : pref, uref, lref
     use communication
     use iteration, only : ordersconverged
     implicit none
@@ -419,8 +468,8 @@ contains
     real(kind=realtype), intent(inout) :: plocal
 ! working
     integer(kind=inttype) :: i, j, k, ii, istart, iend
-    real(kind=realtype) :: ftmp(3), vx, vy, vz, fact(3), redim, factor, &
-&   ostart, oend
+    real(kind=realtype) :: ftmp(3), vx, vy, vz, f_fact(3), q_fact, qtmp&
+&   , redim, factor, ostart, oend
     redim = pref*uref
 ! compute the relaxation factor based on the ordersconverged
 ! how far we are into the ramp:
@@ -436,8 +485,11 @@ contains
       factor = (ordersconverged-ostart)/(oend-ostart)
     end if
 ! compute the constant force factor
-    fact = factor*actuatorregions(iregion)%f/actuatorregions(iregion)%&
-&     volume/pref
+    f_fact = factor*actuatorregions(iregion)%force/actuatorregions(&
+&     iregion)%volume/pref
+! heat factor. this is heat added per unit volume per unit time
+    q_fact = factor*actuatorregions(iregion)%heat/actuatorregions(&
+&     iregion)%volume/(pref*uref*lref*lref)
 ! loop over the ranges for this block
     istart = actuatorregions(iregion)%blkptr(nn-1) + 1
     iend = actuatorregions(iregion)%blkptr(nn)
@@ -447,20 +499,210 @@ contains
       j = actuatorregions(iregion)%cellids(2, ii)
       k = actuatorregions(iregion)%cellids(3, ii)
 ! this actually gets the force
-      ftmp = volref(i, j, k)*fact
+      ftmp = volref(i, j, k)*f_fact
       vx = w(i, j, k, ivx)
       vy = w(i, j, k, ivy)
       vz = w(i, j, k, ivz)
+! this gets the heat addition rate
+      qtmp = volref(i, j, k)*q_fact
       if (res) then
 ! momentum residuals
         dw(i, j, k, imx:imz) = dw(i, j, k, imx:imz) - ftmp
 ! energy residuals
         dw(i, j, k, irhoe) = dw(i, j, k, irhoe) - ftmp(1)*vx - ftmp(2)*&
-&         vy - ftmp(3)*vz
+&         vy - ftmp(3)*vz - qtmp
       else
 ! add in the local power contribution:
         plocal = plocal + (vx*ftmp(1)+vy*ftmp(2)+vz*ftmp(3))*redim
       end if
     end do
   end subroutine sourceterms_block
+!  differentiation of initres_block in reverse (adjoint) mode (with options i4 dr8 r8 noisize):
+!   gradient     of useful results: *dw
+!   with respect to varying inputs: *dw
+!   rw status of diff variables: *dw:in-out
+!   plus diff mem management of: dw:in
+  subroutine initres_block_b(varstart, varend, nn, sps)
+!
+!       initres initializes the given range of the residual. either to
+!       zero, steady computation, or to an unsteady term for the time
+!       spectral and unsteady modes. for the coarser grid levels the
+!       residual forcing term is taken into account.
+!
+    use blockpointers
+    use flowvarrefstate
+    use inputiteration
+    use inputphysics
+    use inputtimespectral
+    use inputunsteady
+    use iteration
+    implicit none
+!
+!      subroutine arguments.
+!
+    integer(kind=inttype), intent(in) :: varstart, varend, nn, sps
+!
+!      local variables.
+!
+    integer(kind=inttype) :: mm, ll, ii, jj, i, j, k, l, m
+    real(kind=realtype) :: oneoverdt, tmp
+    real(kind=realtype), dimension(:, :, :, :), pointer :: ww, wsp, wsp1
+    real(kind=realtype), dimension(:, :, :), pointer :: volsp
+    integer :: branch
+! return immediately of no variables are in the range.
+    if (varend .ge. varstart) then
+! determine the equation mode and act accordingly.
+      select case  (equationmode) 
+      case (steady) 
+! steady state computation.
+! determine the currently active multigrid level.
+        if (currentlevel .eq. groundlevel) then
+          call pushcontrol2b(1)
+        else
+          call pushcontrol2b(0)
+        end if
+      case default
+        call pushcontrol2b(2)
+      end select
+      do l=varend,varstart,-1
+        do j=jl,2,-1
+          do i=il,2,-1
+            dwd(i, j, kb, l) = 0.0_8
+            dwd(i, j, ke, l) = 0.0_8
+            dwd(i, j, 1, l) = 0.0_8
+            dwd(i, j, 0, l) = 0.0_8
+          end do
+        end do
+        do k=kb,0,-1
+          do i=il,2,-1
+            dwd(i, jb, k, l) = 0.0_8
+            dwd(i, je, k, l) = 0.0_8
+            dwd(i, 1, k, l) = 0.0_8
+            dwd(i, 0, k, l) = 0.0_8
+          end do
+        end do
+        do k=kb,0,-1
+          do j=jb,0,-1
+            dwd(ib, j, k, l) = 0.0_8
+            dwd(ie, j, k, l) = 0.0_8
+            dwd(1, j, k, l) = 0.0_8
+            dwd(0, j, k, l) = 0.0_8
+          end do
+        end do
+      end do
+      call popcontrol2b(branch)
+      if (branch .eq. 0) then
+        do l=varend,varstart,-1
+          do k=kl,2,-1
+            do j=jl,2,-1
+              do i=il,2,-1
+                dwd(i, j, k, l) = 0.0_8
+              end do
+            end do
+          end do
+        end do
+      else if (branch .eq. 1) then
+        do l=varend,varstart,-1
+          do k=kl,2,-1
+            do j=jl,2,-1
+              do i=il,2,-1
+                dwd(i, j, k, l) = 0.0_8
+              end do
+            end do
+          end do
+        end do
+      end if
+    end if
+  end subroutine initres_block_b
+  subroutine initres_block(varstart, varend, nn, sps)
+!
+!       initres initializes the given range of the residual. either to
+!       zero, steady computation, or to an unsteady term for the time
+!       spectral and unsteady modes. for the coarser grid levels the
+!       residual forcing term is taken into account.
+!
+    use blockpointers
+    use flowvarrefstate
+    use inputiteration
+    use inputphysics
+    use inputtimespectral
+    use inputunsteady
+    use iteration
+    implicit none
+!
+!      subroutine arguments.
+!
+    integer(kind=inttype), intent(in) :: varstart, varend, nn, sps
+!
+!      local variables.
+!
+    integer(kind=inttype) :: mm, ll, ii, jj, i, j, k, l, m
+    real(kind=realtype) :: oneoverdt, tmp
+    real(kind=realtype), dimension(:, :, :, :), pointer :: ww, wsp, wsp1
+    real(kind=realtype), dimension(:, :, :), pointer :: volsp
+! return immediately of no variables are in the range.
+    if (varend .lt. varstart) then
+      return
+    else
+! determine the equation mode and act accordingly.
+      select case  (equationmode) 
+      case (steady) 
+! steady state computation.
+! determine the currently active multigrid level.
+        if (currentlevel .eq. groundlevel) then
+! ground level of the multigrid cycle. initialize the
+! owned residuals to zero.
+          do l=varstart,varend
+            do k=2,kl
+              do j=2,jl
+                do i=2,il
+                  dw(i, j, k, l) = zero
+                end do
+              end do
+            end do
+          end do
+        else
+! coarse grid level. initialize the owned cells to the
+! residual forcing terms.
+          do l=varstart,varend
+            do k=2,kl
+              do j=2,jl
+                do i=2,il
+                  dw(i, j, k, l) = wr(i, j, k, l)
+                end do
+              end do
+            end do
+          end do
+        end if
+      end select
+! set the residual in the halo cells to zero. this is just
+! to avoid possible problems. their values do not matter.
+      do l=varstart,varend
+        do k=0,kb
+          do j=0,jb
+            dw(0, j, k, l) = zero
+            dw(1, j, k, l) = zero
+            dw(ie, j, k, l) = zero
+            dw(ib, j, k, l) = zero
+          end do
+        end do
+        do k=0,kb
+          do i=2,il
+            dw(i, 0, k, l) = zero
+            dw(i, 1, k, l) = zero
+            dw(i, je, k, l) = zero
+            dw(i, jb, k, l) = zero
+          end do
+        end do
+        do j=2,jl
+          do i=2,il
+            dw(i, j, 0, l) = zero
+            dw(i, j, 1, l) = zero
+            dw(i, j, ke, l) = zero
+            dw(i, j, kb, l) = zero
+          end do
+        end do
+      end do
+    end if
+  end subroutine initres_block
 end module residuals_b

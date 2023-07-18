@@ -2761,7 +2761,6 @@ contains
     use inputADjoint
     use inputTSStabDeriv
     !  ------------------------------------------------
-    use inputPhysics, only : velDirFreeStream, liftDirection, dragDirection
     use communication, only : myid, adflow_comm_world
     use iteration, only : coefTime, coefTimeALE, coefMeshALE, &
          oldSolWritten, nALEMeshes, nALESteps, nOldLevels
@@ -2859,8 +2858,6 @@ contains
     if(equationMode == unsteady) then
        if(timeIntegrationScheme == explicitRK) &
             storeConvInnerIter = .false.
-    else
-       storeConvInnerIter = .true.
     endif
     !
     !       Iteration parameters. Check if the key parameters have specified
@@ -3696,6 +3693,17 @@ contains
        sinCoefFourZRot = zero
     endif
 
+    ! Allocate the memory for cpmin_family. We had to wait until
+    ! nTimeIntervalsSpectral was set.
+    if(.not. allocated(cpmin_family) ) then
+       allocate(cpmin_family(nTimeIntervalsSpectral), stat=ierr)
+       if(ierr /= 0)                         &
+            call terminate("checkInputParam", &
+            "Memory allocation failure for &
+            &cpmin_family")
+       cpmin_family = zero
+    endif
+
   end subroutine checkInputParam
   subroutine setDefaultValues
     !
@@ -3724,7 +3732,7 @@ contains
     use iteration, only : nOldSolAvail, timeSpectralGridsNotWritten
     use monitor, only : monMassSliding, nTimeStepsRestart, timeUnsteadyRestart
     use killSignals, only : fatalFail, routineFailed
-    use ADjointPETSc, only : adjointPETScVarsAllocated
+    use ADjointPETSc, only : adjointPETScVarsAllocated, adjointPETScPreProcVarsAllocated
     use inputCostFunctions
     implicit none
 
@@ -3811,16 +3819,17 @@ contains
     cpFile = ""                  ! Serves as a check later on.
 
     storeConvInnerIter = .false. ! Do not store the convergence of
-    ! the inner iterations in unsteady
-    ! mode.
+                                 ! iterations(inner iterations in unsteady mode).
 
 #ifdef USE_SINGLE_PRECISION
     precisionGrid = precisionSingle   ! Default IO precision depends
     precisionSol  = precisionSingle   ! on the default floating
-#else                                    ! point type used. Note that
+                                      ! point type used. Note that
+#else
     precisionGrid = precisionDouble   ! for quadrupole precision the
     precisionSol  = precisionDouble   ! IO takes place in double
-#endif                                   ! precision.
+                                      ! precision.
+#endif
 
     ! Surface solution defaults to single precision
     precisionSurfGrid = precisionSingle
@@ -3845,7 +3854,7 @@ contains
     resAveraging =  noResAveraging
     smoop        = 1.5_realType
 
-    turbTreatment     = segregated     ! Segregated solver for the
+    turbTreatment     = decoupled      ! Decoupled solver for the
     ! turbulent equations
     turbSmoother      = adi            ! solved using an adi scheme.
     freezeTurbSource = .true.          ! Freeze the coarse grid source
@@ -4040,6 +4049,7 @@ contains
     useApproxWallDistance = .False.
     cflLimit = 3.0
     adjointPETScVarsAllocated = .False.
+    adjointPETScPreProcVarsAllocated = .False.
     usematrixfreedrdw = .False.
     sepSensorOffset = zero
     sepSensorSharpness = 10_realType
@@ -4056,8 +4066,8 @@ contains
     !
     !      Subroutine arguments.
     !
-    real(kind=realType), dimension(nValues), intent(in) :: values
     integer(kind=intType), intent(in) :: nValues
+    real(kind=realType), dimension(nValues), intent(in) :: values
 
     ! Basically just copy into module
     if (allocated(isoValues)) then

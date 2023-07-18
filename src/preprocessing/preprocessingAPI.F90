@@ -248,9 +248,9 @@ contains
     implicit none
 
     ! Input/Output
+    integer(kind=intType), intent(in) :: n, nFam
     integer(kind=intType), dimension(n) :: flag
     integer(kind=intType), dimension(nFam) :: closedFamList
-    integer(kind=intType), intent(in) :: n, nFam
 
     ! Working
     integer(kind=intType) :: level, nLevels
@@ -478,6 +478,7 @@ contains
     use constants
     use block
     use communication
+    use commonFormats, only : strings
     implicit none
     !
     !      Subroutine arguments.
@@ -516,9 +517,8 @@ contains
        int2String = adjustl(int2String)
 
        print "(a)", "#"
-       print 101, trim(int1String), trim(int2String)
+       print strings, "# Grid level: ", trim(int1String),", Total number of cells: ", trim(int2String)
        print "(a)", "#"
-101    format("# Grid level: ", a,", Total number of cells: ", a)
 
     endif
 
@@ -872,6 +872,7 @@ contains
     use cgnsGrid
     use inputTimeSpectral
     use utils, only : setPointers
+    use commonFormats, only : stringSpace, stringSci5
     implicit none
     !
     !      Subroutine arguments.
@@ -1011,15 +1012,10 @@ contains
 
                       print "(a)", "#"
                       print "(a)", "#                      Warning"
-                      print 100,                              &
-                           trim(cgnsDoms(i)%bocoInfo(j)%bocoName), &
-                           trim(cgnsDoms(i)%zonename)
-                      print 110, fact
+                      print stringSpace, "# Symmetry boundary face", trim(cgnsDoms(i)%bocoInfo(j)%bocoName), &
+                           "of zone", trim(cgnsDoms(i)%zonename), "is not planar."
+                      write(*, stringSci5) "# Maximum deviation from the mean normal: ", real(fact), " degrees"
                       print "(a)", "#"
-100                   format("# Symmetry boundary face",1X,A,1X,"of zone", &
-                           1x,a,1x, "is not planar.")
-110                   format("# Maximum deviation from the mean normal: ", &
-                           e12.5, " degrees")
 
                    endif
 
@@ -1363,10 +1359,6 @@ contains
     defaultFamName(BCWallViscousIsothermal) = 'wall'
     defaultFamName(UserDefined) = 'userDefined'
 
-101 format("CGNS Block ",I4,", boundary condition ",I4, ", of type ",a, &
-         " does not have a family. Based on the boundary condition type," &
-         " a name of: '", a, "' will be used.")
-
     nFam = 0
     do i=1, size(cgnsDoms)
        do j=1, size(cgnsDoms(i)%bocoInfo)
@@ -1374,8 +1366,10 @@ contains
              if (trim(cgnsDoms(i)%bocoInfo(j)%wallBCName) == "") then
                 if (myid == 0) then
                    ! Tell the user we are adding an automatic family name
-                   write(*, 101), i, j, trim(BCTypeName(cgnsDoms(i)%bocoInfo(j)%BCTypeCGNS)), &
-                        trim(defaultFamName(cgnsDoms(i)%bocoInfo(j)%BCTypeCGNS))
+                   write(*, "(2(A, I4), *(A))") "CGNS Block ", i, ", boundary condition ", j, ", of type ", &
+                   trim(BCTypeName(cgnsDoms(i)%bocoInfo(j)%BCTypeCGNS)), &
+                   " does not have a family. Based on the boundary condition type,", &
+                   " a name of: '", trim(defaultFamName(cgnsDoms(i)%bocoInfo(j)%BCTypeCGNS)), "' will be used."
                 end if
                 cgnsDoms(i)%bocoInfo(j)%wallBCName = trim(defaultFamName(cgnsDoms(i)%bocoInfo(j)%BCTypeCGNS))
              end if
@@ -1582,15 +1576,15 @@ contains
           case (iBCGroupWalls)
              write(*,"(a)",advance="no") '| Wall Types           : '
           case (iBCGroupInflow)
-             write(*,"(a)",advance="no") '| Inflow Types : '
+             write(*,"(a)",advance="no") '| Inflow Types         : '
           case (iBCGroupOutflow)
-             write(*,"(a)",advance="no") '| Outflow Types : '
+             write(*,"(a)",advance="no") '| Outflow Types        : '
           case (iBCGroupSymm)
              write(*,"(a)",advance="no") '| Symmetry Types       : '
           case (iBCGroupFarfield)
              write(*,"(a)",advance="no") '| Farfield Types       : '
           case (iBCGroupOverset)
-             write(*,"(a)",advance="no") '| Oveset Types         : '
+             write(*,"(a)",advance="no") '| Overset Types        : '
           case (iBCGroupOther)
              write(*,"(a)",advance="no") '| Other Types          : '
           end select
@@ -1697,7 +1691,7 @@ contains
     ! 3. Node-based output for tecplot files.
     use constants
     use communication, only : adflow_comm_world, myid, nProc
-    use surfaceFamilies, only : familyExchange, IS1, IS2, PETSC_COPY_VALUES, PETSC_DETERMINE
+    use surfaceFamilies, only : familyExchange, IS1, IS2!, PETSC_COPY_VALUES, PETSC_DETERMINE
     use utils, only : pointReduce, eChk
     use surfaceUtils
     implicit none
@@ -2736,6 +2730,7 @@ contains
     use checkVolBlock
     use inputIteration
     use utils, only : setPointers, terminate, returnFail
+    use commonFormats, only : stringSpace, stringInt1
     implicit none
     !
     !      Subroutine arguments.
@@ -3294,11 +3289,8 @@ contains
           if(myID == 0) then
              print "(a)", "#"
              print "(a)", "#                      Warning"
-             print 100, level
-100          format("#* Negative volumes present on coarse grid &
-                  &level",1x,i1,".")
-             print "(a)", "#* Computation continues, &
-                  &but be aware of this"
+             print stringInt1, "#* Negative volumes present on coarse grid level ", level, "."
+             print "(a)", "#* Computation continues, but be aware of this"
              print "(a)", "#"
           endif
 
@@ -3322,11 +3314,9 @@ contains
           integerString = trim(integerString)
           print "(a)", "#"
           print "(a)", "#                      Warning"
-          print 101, trim(integerString)
-          print 102
+          print stringSpace, "#", trim(integerString), "bad quality volumes found."
+          print "(a)", "# Computation will continue, but be aware of this."
           print "(a)", "#"
-101       format("# ",a," bad quality volumes found.")
-102       format("# Computation will continue, but be aware of this")
        endif
     endif
 
@@ -3394,6 +3384,7 @@ contains
     use inputTimeSpectral
     use checkVolBlock
     use utils, only : setPointers, terminate
+    use commonFormats, only : stringSpace
     implicit none
     !
     !      Subroutine arguments.
@@ -3404,11 +3395,8 @@ contains
     !      Local variables.
     !
     integer :: proc, ierr
-
     integer(kind=intType) :: nn, sps, i, j, k
-
     real(kind=realType), dimension(3) :: xc
-
     character(len=10) :: intString1, intString2, intString3
 
     ! Processor 0 prints a message that negative volumes are present
@@ -3418,8 +3406,7 @@ contains
        print "(a)", "#"
        print "(a)", "#                      Error"
        print "(a)", "# Negative volumes found in the grid."
-       print "(a)", "# A list of the negative volumes is &
-            &printed below"
+       print "(a)", "# A list of the negative volumes is printed below"
        print "(a)", "#"
     endif
 
@@ -3456,11 +3443,10 @@ contains
                    case (steady, unsteady)
 
                       print "(a)", "#"
-                      print 100, trim(cgnsDoms(nbkGlobal)%zoneName)
-100                   format("# Block",1x,a,1x,"contains the following &
-                           &negative volumes")
-                      print "(a)", "#=================================&
-                           &==================================="
+                      print stringSpace, "# Block", trim(cgnsDoms(nbkGlobal)%zoneName), &
+                        "contains the following negative volumes"
+                      print "(a)", "#================================&
+                      &===================================="
                       print "(a)", "#"
 
                       !====================================================
@@ -3471,13 +3457,10 @@ contains
                       intString1 = adjustl(intString1)
 
                       print "(a)", "#"
-                      print 101, trim(intString1), &
-                           trim(cgnsDoms(nbkGlobal)%zoneName)
-101                   format("# Spectral solution",1x,a, ":block", &
-                           1x,a,1x,"contains the following negative &
-                           &volumes")
-                      print "(a)", "#=================================&
-                           &==================================="
+                      print stringSpace, "# Spectral solution", trim(intString1), "block", &
+                        trim(cgnsDoms(nbkGlobal)%zoneName), "contains the following negative volumes"
+                      print "(a)", "#===================================&
+                      &================================="
                       print "(a)", "#"
 
                    end select
@@ -3507,13 +3490,9 @@ contains
                                intString2 = adjustl(intString2)
                                intString3 = adjustl(intString3)
 
-                               print 102, trim(intString1), &
-                                    trim(intString2), &
-                                    trim(intString3), &
-                                    xc(1), xc(2), xc(3), -vol(i,j,k)
-102                            format("# Indices (",a,",",a,",",a,"), &
-                                    &coordinates (",e10.3,",",e10.3,",", &
-                                    e10.3,"), Volume: ",e10.3)
+                               print "(7(A), 4(ES10.3, A))", "# Indices (", trim(intString1), &
+                                     ",", trim(intString2), ",", trim(intString3), "), coordinates (", &
+                                     xc(1), ",", xc(2), ",", xc(3), "), Volume: ", -vol(i,j,k)
 
                             endif
                          enddo
@@ -3851,6 +3830,7 @@ contains
        endif
 
        call gridVelocitiesFineLevel(.false., t, mm)
+
        call gridVelocitiesCoarseLevels(mm)
        call normalVelocitiesAllLevels(mm)
 
@@ -3889,7 +3869,10 @@ contains
 
     call timePeriodSpectral
     call timeRotMatricesSpectral
-    call fineGridSpectralCoor
+    ! solve for the new grid only for rigid rotation with analytical deformation case
+    if (.NOT. usetsinterpolatedgridvelocity) then 
+       call fineGridSpectralCoor
+    end if
     call timeSpectralMatrices
 
 
@@ -3963,18 +3946,11 @@ contains
     use inputTimeSpectral, only : nTimeIntervalsSpectral
     use inputAdjoint, only : frozenTurbulence
     use ADjointPETSc, only: w_like1, w_like2, PETScIerr, &
-         psi_like1, psi_like2, x_like, psi_like3
+         psi_like1, psi_like2, x_like, psi_like3, adjointPETScPreProcVarsAllocated
     use utils, only : setPointers, EChk
-#include <petscversion.h>
-#if PETSC_VERSION_GE(3,8,0)
 #include <petsc/finclude/petsc.h>
-  use petsc
-  implicit none
-#else
-  implicit none
-#define PETSC_AVOID_MPIF_H
-#include "petsc/finclude/petsc.h"
-#endif
+    use petsc
+    implicit none
 
     !     Local variables.
     !
@@ -4021,7 +3997,9 @@ contains
     call VecCreateMPIWithArray(ADFLOW_COMM_WORLD,3,ndimX,PETSC_DECIDE, &
          PETSC_NULL_SCALAR,x_like,PETScIerr)
     call EChk(PETScIerr,__FILE__,__LINE__)
-
+    
+    adjointPETScPreProcVarsAllocated = .True.
+    
     ! Need to initialize the stencils as well, only once:
     call initialize_stencils
 

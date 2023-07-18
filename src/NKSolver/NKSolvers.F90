@@ -3,17 +3,9 @@ module NKSolver
   use constants
 
   ! MPI comes from constants, so we need to avoid MPIF_H in PETSc
-#include <petscversion.h>
-#if PETSC_VERSION_GE(3,8,0)
 #include <petsc/finclude/petsc.h>
   use petsc
   implicit none
-#else
-  implicit none
-#define PETSC_AVOID_MPIF_H
-#include "petsc/finclude/petsc.h"
-#include "petsc/finclude/petscvec.h90"
-#endif
 
   ! PETSc Matrices:
   ! dRdw: This is the actual matrix-free matrix computed with FD
@@ -320,13 +312,20 @@ contains
     end do spectralLoop4b
 
     ! Evaluate the residual now
-    call computeResidualNK()
+    call computeResidualNK(useUpdateIntermed = .True.)
     call getCurrentResidual(rhoRes, totalRRes)
 
     ! Put everything back
     call setInfo(tmp, n)
 
     deallocate(tmp)
+
+    ! propogate the old values throught the code.
+    ! This is not needed for euler and shouldn't be needed for
+    ! viscous equations either, but becuase of an issue else where it is.
+    ! see https://github.com/mdolab/adflow/pull/46 for the discussion.
+    call computeResidualNK(useUpdateIntermed = .True.)
+
 
   end subroutine getFreeStreamResidual
 
@@ -452,7 +451,7 @@ contains
     ! computeResidualNK subroutine
 
     call setW(wVec)
-    call computeResidualNK()
+    call computeResidualNK(useUpdateIntermed = .False.)
     call setRVec(rVec)
     ! We don't check an error here, so just pass back zero
     ierr = 0
@@ -540,7 +539,7 @@ contains
 
        ! Evaluate the residual before we start and put the residual in
        ! 'g', which is what would be the case after a linesearch.
-       call computeResidualNK()
+       call computeResidualNK(useUpdateIntermed = .False.)
        call setRVec(rVec)
        iter_k = 1
        iter_m = 0
@@ -561,6 +560,7 @@ contains
        iterType = "     *NK"
        call FormJacobianNK()
     else
+
        call MatAssemblyBegin(dRdw, MAT_FINAL_ASSEMBLY, ierr)
        call EChk(ierr, __FILE__, __LINE__)
        call MatAssemblyEnd(dRdw, MAT_FINAL_ASSEMBLY, ierr)
@@ -580,16 +580,40 @@ contains
 
     ! Set all tolerances for linear solver.
 
-    ! The 0.01 requires some explaination: The linear residual is
-    ! roughly the same magnitude as the non-linear one. However, it
-    ! very rare situations, it can happen that the non-linear residual
-    ! is *just* above the convergence criteria, while the linear
-    ! residual is *just* below. What happens is that the linear sover
-    ! kicks up and doesnt' do anything and then the non-linear
-    ! convergnce check can't do anything either. By multiplying by
-    ! 0.5, we make sure that the linear solver actually has to do
-    ! *something* and not just kick out immediately.
+    ! The 0.01 multiplier for atol requires some explanation:
+    ! The linear residual is roughly the same magnitude
+    ! as the nonlinear one at the start of the linear solution,
+    ! assuming the initial guess does not have a large effect
+    ! on the linear residual. KSPSolve exits when either the
+    ! rtol or atol is satisfied, which means that the atol
+    ! only comes into play near the end of the nonlinear solution.
+    ! We use atol because in the final Newton step when we are
+    ! close to the L2 target, we won't need to solve the linear
+    ! system tightly. For example, if we are one order of magnitude
+    ! away from the nonlinear solver target, then there is
+    ! no point in solving the linear system to 8 orders of
+    ! magnitude convergence in the linear residual. Instead,
+    ! we can stop early using atol. However, in very rare situations,
+    ! it can happen that the nonlinear residual is *just* above
+    ! the convergence criteria, while the linear residual is
+    ! *just* below. What happens is that the linear solver hits
+    ! the atol limit immediately, doesn't do anything, and then
+    ! the nonlinear convergence check can't do anything either.
+    ! By multiplying by 0.01, we make sure that the linear solver
+    ! actually has to do *something* and not just exit immediately.
+
+#ifndef USE_COMPLEX
+    ! in the real mode, we set the atol slightly lower than the target L2 convergence
+    ! as explained in the comment block above
     atol = totalR0*L2Conv*0.01_realType
+#else
+    ! in complex mode, we want to tightly solve the linear system every time
+    ! because even though the real residuals converge, complex ones might (and do) lag
+    ! this approach makes sure that even with a converged real system, the linear solver
+    ! still converges the linear system tightly and this helps with the complex system convergence
+    atol = totalR0*L2Conv*1e-6_realType
+#endif
+
     maxIt = NK_subspace
 
     call KSPSetTolerances(NK_KSP, real(rtol), &
@@ -656,7 +680,8 @@ contains
   subroutine LSCubic(x, f, g, y, w, fnorm, ynorm, gnorm, nfevals, flag, lambda)
 
     use constants
-    use utils, only : EChk, myisnan
+    use utils, only : EChk
+    use genericISNAN, only : myisnan
     use communication, only : myid
     use initializeFlow, only : setUniformFlow
     use iteration, only : totalR0
@@ -664,10 +689,10 @@ contains
 
     ! Input/Output
     Vec x, f, g, y, w
-    !x 	- current iterate
-    !f 	- residual evaluated at x
-    !y 	- search direction
-    !w 	- work vector -> On output, new iterate
+    !x    - current iterate
+    !f    - residual evaluated at x
+    !y    - search direction
+    !w    - work vector -> On output, new iterate
     !g    - residual evaluated at new iterate y
 
     real(kind=alwaysrealType) :: fnorm, gnorm, ynorm
@@ -726,7 +751,7 @@ contains
 
     ! Compute Function:
     call setW(w)
-    call computeResidualNK()
+    call computeResidualNK(useUpdateIntermed = .True.)
     call setRVec(g, flowRes2, turbRes2, gnorm)
 
     nfevals = nfevals + 1
@@ -744,10 +769,10 @@ contains
     ! order of magnitude or more.
 
     hadANan = .False.
-    if (isnan(gnorm) .or. turbRes2 > 2.0*turbRes1) then
+    if (myisnan(gnorm) .or. turbRes2 > 2.0*turbRes1) then
        ! Special testing for nans
 
-       if (isnan(gnorm)) then
+       if (myisnan(gnorm)) then
           hadANan = .True.
           call setUniformFlow()
           lambda = 0.5
@@ -769,12 +794,12 @@ contains
 
           ! Compute Function
           call setW(w)
-          call computeResidualNK()
+          call computeResidualNK(useUpdateIntermed = .True.)
           call setRVec(g, flowRes2, turbRes2, gnorm)
 
           nfevals = nfevals + 1
 
-          if (isnan(gnorm)) then
+          if (myisnan(gnorm)) then
              ! Just reset the flow, adjust the step back and keep
              ! going
              call setUniformFlow()
@@ -839,7 +864,7 @@ contains
 
     ! Compute new function again:
     call setW(w)
-    call computeResidualNK()
+    call computeResidualNK(useUpdateIntermed = .True.)
     call setRVec(g)
 
     nfevals = nfevals + 1
@@ -890,7 +915,7 @@ contains
           lambda = lambdatemp
        end if
 
-       if (isnan(lambda)) then
+       if (myisnan(lambda)) then
           flag = .False.
           exit cubic_loop
        end if
@@ -904,7 +929,7 @@ contains
 #endif
        ! Compute new function again:
        call setW(w)
-       call computeResidualNK()
+       call computeResidualNK(useUpdateIntermed = .True.)
        call setRVec(g)
        nfevals = nfevals + 1
 
@@ -930,10 +955,10 @@ contains
 
     ! Input/Output
     Vec x, f, g, y, w
-    !x 	- current iterate
-    !f 	- residual evaluated at x
-    !y 	- search direction
-    !w 	- work vector -> On output, new iterate
+    !x    - current iterate
+    !f    - residual evaluated at x
+    !y    - search direction
+    !w    - work vector -> On output, new iterate
     !g    - residual evaluated at new iterate y
 
     integer(kind=intType) :: nfevals
@@ -946,12 +971,13 @@ contains
     nfevals = 0
     step = nk_fixedStep
     tmp = -step
+
     call VecWAXPY(w, tmp, y, x, ierr)
     call EChk(ierr, __FILE__, __LINE__)
 
     ! Compute new function:
     call setW(w)
-    call computeResidualNK()
+    call computeResidualNK(useUpdateIntermed = .True.)
     call setRVec(g)
 
     nfevals = nfevals + 1
@@ -965,10 +991,10 @@ contains
 
     ! Input/Output
     Vec x, f, g, y, w
-    !x 	- current iterate
-    !f 	- residual evaluated at x
-    !y 	- search direction
-    !w 	- work vector -> On output, new iterate
+    !x    - current iterate
+    !f    - residual evaluated at x
+    !y    - search direction
+    !w    - work vector -> On output, new iterate
     !g    - residual evaluated at new iterate y
 
     real(kind=alwaysRealType) :: fnorm, gnorm, ynorm
@@ -1024,7 +1050,7 @@ contains
 
        ! Compute Function @ new x (w is the work vector
        call setW(w)
-       call computeResidualNK()
+       call computeResidualNK(useUpdateIntermed = .True.)
        call setRVec(g)
        nfevals = nfevals + 1
 
@@ -1054,19 +1080,24 @@ contains
     step = alpha
   end subroutine LSNM
 
-  subroutine computeResidualNK()
+  subroutine computeResidualNK(useUpdateIntermed)
 
     use constants
     use blockette, only : blocketteRes
     implicit none
 
-    logical :: updateDt
+    logical, intent(in), optional :: useUpdateIntermed
+    logical :: updateIntermed
 
-    ! We want to update the time step
-    updateDt = .true.
+    ! Only update the time step if explicitly requested
+    updateIntermed = .false.
+
+    if (present(useUpdateIntermed)) then
+      updateIntermed = useUpdateIntermed
+    end if
 
     ! Shell function to maintain backward compatibility with code using computeResidualNK
-    call blocketteRes(useUpdateDT = updateDt)
+    call blocketteRes(useUpdateIntermed = updateIntermed)
 
   end subroutine computeResidualNK
 
@@ -1397,7 +1428,7 @@ contains
     integer(kind=intType) :: nn,i,j,k,l,counter,sps
     real(kind=realType) :: ovv
 
-    call computeResidualNK()
+    call computeResidualNK(useUpdateIntermed = .True.)
     counter = 0
     do nn=1,nDom
        do sps=1,nTimeIntervalsSpectral
@@ -1490,8 +1521,8 @@ contains
     use utils, only : setPointers
     implicit none
 
-    real(kind=realType), intent(in), dimension(iSize) :: info
     integer(kind=intType), intent(in) :: iSize
+    real(kind=realType), intent(in), dimension(iSize) :: info
     integer(kind=intType) :: nn, counter, i, j, k, l, sps
     ! Determine the size of a flat array needed to store w, P, ( and
     ! rlv, rev if necessary) with full double halos.
@@ -1536,8 +1567,8 @@ contains
 
     implicit none
 
-    real(kind=realType), intent(out), dimension(iSize) :: info
     integer(kind=intType), intent(in) :: iSize
+    real(kind=realType), intent(out), dimension(iSize) :: info
     integer(kind=intType) ::  nn, counter, i, j, k, l, sps
     ! Determine the size of a flat array needed to store w, P, ( and
     ! rlv, rev if necessary) with full double halos.
@@ -1612,17 +1643,9 @@ end module NKSolver
 module ANKSolver
 
   use constants
-#include <petscversion.h>
-#if PETSC_VERSION_GE(3,8,0)
 #include <petsc/finclude/petsc.h>
   use petsc
   implicit none
-#else
-  implicit none
-#define PETSC_AVOID_MPIF_H
-#include "petsc/finclude/petsc.h"
-#include "petsc/finclude/petscvec.h90"
-#endif
 
   Mat  dRdw, dRdwPre
   Vec wVec, rVec, deltaW, baseRes
@@ -1649,6 +1672,7 @@ module ANKSolver
   real(kind=realType)   :: ANK_switchTol
   real(kind=realType)   :: ANK_divTol = 10
   logical :: ANK_useTurbDADI
+  logical :: ANK_useApproxSA
   real(kind=realType) :: ANK_turbcflscale
   logical :: ANK_useFullVisc
   logical :: ANK_ADPC
@@ -1663,6 +1687,7 @@ module ANKSolver
   real(kind=realType) :: ANK_secondOrdSwitchTol, ANK_coupledSwitchTol
   real(kind=realType) :: ANK_physLSTol, ANK_unstdyLSTol
   real(kind=realType) :: ANK_pcUpdateTol
+  real(kind=realType) :: ANK_pcUpdateCutoff
   real(kind=realType) :: lambda
   logical :: ANK_solverSetup=.False.
   integer(kind=intTYpe) :: ANK_iter
@@ -1675,8 +1700,8 @@ module ANKSolver
   logical :: ANK_coupled=.False.
   logical :: ANK_turbSetup=.False.
   integer(kind=intType) :: ANK_iterTurb, nStateTurb
-  real(kind=realType) :: lambdaTurb
-  real(kind=alwaysRealType) :: linResOldTurb, ANK_physLSTolTurb
+  real(kind=realType) :: lambdaTurb, ANK_physLSTolTurb
+  real(kind=alwaysRealType) :: linResOldTurb
 
 contains
 
@@ -2069,6 +2094,12 @@ contains
 
                       ! get the global cell index
                       irow = globalCell(i, j, k)
+
+                      if (useCoarseMats) then
+                         do lvl=1, agmgLevels-1
+                            coarseRows(lvl+1) = coarseIndices(nn, lvl)%arr(i, j, k)
+                         end do
+                      end if
 
                       ! Add the contribution to the matrix in PETSc
                       call setBlock()
@@ -2590,6 +2621,10 @@ contains
     call VecGetArrayReadF90(deltaW,dvec_pointer,ierr)
     call EChk(ierr,__FILE__,__LINE__)
 
+
+    ! TODO AY: check if this routine is fine with complex mode...
+    ! dtl and volume can both have complex values in them
+
     if (.not. ANK_coupled) then
        ! Only flow variables
        ii = 1
@@ -2756,6 +2791,9 @@ contains
     integer(kind=intType) :: ierr, nn, sps, i, j, k, l, ii, iiRho
     real(kind=realType),pointer :: rvec_pointer(:)
     real(kind=realType),pointer :: dvec_pointer(:)
+
+    ! TODO AY: check if this routine is fine in complex mode...
+    ! dtl and volume can both have complex values in them
 
     ! Calculate the steady residuals
     call blocketteRes(useFlowRes=.False.)
@@ -3034,7 +3072,8 @@ contains
     use blockPointers, only : ndom, il, jl, kl
     use flowVarRefState, only : nw, nwf, nt1, nt2
     use inputtimespectral, only : nTimeIntervalsSpectral
-    use utils, only : setPointers, EChk, myisnan
+    use utils, only : setPointers, EChk
+    use genericISNAN, only : myisnan
     use communication, only : ADflow_comm_world
     implicit none
 
@@ -3046,15 +3085,15 @@ contains
     real(kind=realType), pointer :: wvec_pointer(:)
     real(kind=realType), pointer :: dvec_pointer(:)
     real(kind=alwaysRealType) :: lambdaL ! L is for local
-    real(kind=realType) :: ratio
-
+    real(kind=alwaysRealType) :: lambdaP_recv ! to receive the global step
+    real(kind=alwaysRealType) :: ratio
 
     ! Determine the maximum step size that would yield
-    ! a maximum change of 10% in density, total energy,
-    ! and turbulence variable after a KSP solve.
+    ! a maximum relative change of ANK_physLSTol in density, and total energy.
+    ! We also check for turbulence, but only limit the step
+    ! for updates that decrease the value of the turbulence working variable.
 
-    ! Initialize the local step size as ANK_stepFactor
-    ! because the initial step is likely to be equal to this.
+    ! Initialize the local step size as lambdaP which is an i/o variable
     lambdaL = real(lambdaP)
 
     ! First we need to read both the update and the state
@@ -3070,6 +3109,7 @@ contains
     call VecGetArrayF90(deltaW,dvec_pointer,ierr)
     call EChk(ierr,__FILE__,__LINE__)
 
+    ! in decoupled, we just have the flow variables
     if(.not. ANK_coupled) then
        ii = 1
        do nn=1, nDom
@@ -3078,18 +3118,33 @@ contains
              do k=2, kl
                 do j=2, jl
                    do i=2, il
-                      ! multiply the ratios by 10 to check if the change in a
-                      ! variable is greater than 10% of the variable itself.
+                      ! multiply the ratios by ANK_physLSTol to check if the change in a
+                      ! variable is greater than ANK_physLSTol of the variable itself.
 
                       ! check density
+#ifndef USE_COMPLEX
+                      ! to have the real mode slightly more efficient, we do not check if variables are real
                       ratio = abs(wvec_pointer(ii)/(dvec_pointer(ii)+eps))*ANK_physLSTol
+#else
+                      ! We dont care what happens to the complex part of the update because
+                      ! that is a linear system. So again check the real update for the physical
+                      ! line search. Towards the end of the simulation, real part gets smaller and
+                      ! and smaller updates, so this routine will always give a step of 1 which is what
+                      ! we want for the complex parts.
+                      ratio = abs(real(wvec_pointer(ii)) / real(dvec_pointer(ii) + eps)) * real(ANK_physLSTol)
+#endif
                       lambdaL = min(lambdaL, ratio)
 
                       ! increment by 4 because we want to skip momentum variables
                       ii = ii + 4
 
                       ! check energy
+#ifndef USE_COMPLEX
+                      ! see the comment above for the difference between real and complex versions
                       ratio = abs(wvec_pointer(ii)/(dvec_pointer(ii)+eps))*ANK_physLSTol
+#else
+                      ratio = abs(real(wvec_pointer(ii))/real(dvec_pointer(ii)+eps))* real(ANK_physLSTol)
+#endif
                       lambdaL = min(lambdaL, ratio)
                       ii = ii + 1
                    end do
@@ -3097,6 +3152,7 @@ contains
              end do
           end do
        end do
+    ! in coupled, we also have the turbulence variables
     else
        ii = 1
        do nn=1, nDom
@@ -3105,26 +3161,45 @@ contains
              do k=2, kl
                 do j=2, jl
                    do i=2, il
-                      ! multiply the ratios by 10 to check if the change in a
-                      ! variable is greater than 10% of the variable itself.
+
+                      ! multiply the ratios by ANK_physLSTol to check if the change in a
+                      ! variable is greater than ANK_physLSTol of the variable itself.
 
                       ! check density
+#ifndef USE_COMPLEX
+                      ! to have the real mode slightly more efficient, we do not check if variables are real
                       ratio = abs(wvec_pointer(ii)/(dvec_pointer(ii)+eps))*ANK_physLSTol
+#else
+                      ! We dont care what happens to the complex part of the update because
+                      ! that is a linear system. So again check the real update for the physical
+                      ! line search. Towards the end of the simulation, real part gets smaller and
+                      ! and smaller updates, so this routine will always give a step of 1 which is what
+                      ! we want for the complex parts.
+                      ratio = abs(real(wvec_pointer(ii)) / real(dvec_pointer(ii) + eps)) * real(ANK_physLSTol)
+#endif
                       lambdaL = min(lambdaL, ratio)
 
                       ! increment by 4 because we want to skip momentum variables
                       ii = ii + 4
 
                       ! check energy
+#ifndef USE_COMPLEX
+                      ! see the comment above for the difference between real and complex versions
                       ratio = abs(wvec_pointer(ii)/(dvec_pointer(ii)+eps))*ANK_physLSTol
+#else
+                      ratio = abs(real(wvec_pointer(ii))/real(dvec_pointer(ii)+eps))* real(ANK_physLSTol)
+#endif
                       lambdaL = min(lambdaL, ratio)
                       ii = ii + 1
 
-                        ! needs to be modified
                       ! if coupled ank is used, nstate = nw and this loop is executed
                       ! if no turbulence variables, this loop will be automatically skipped
                       ! check turbulence variable
+#ifndef USE_COMPLEX
                       ratio = (wvec_pointer(ii)/(dvec_pointer(ii)+eps))*ANK_physLSTolTurb
+#else
+                      ratio = ( real(wvec_pointer(ii))/real(dvec_pointer(ii)+eps))*real(ANK_physLSTolTurb)
+#endif
                       ! if the ratio is less than min step, the update is either
                       ! in the positive direction, therefore we do not clip it,
                       ! or the update is very limiting, so we just clip the
@@ -3169,12 +3244,23 @@ contains
     call EChk(ierr,__FILE__,__LINE__)
 
     ! Make sure that we did not get any NaN's in the process
-    if (isnan(lambdaL)) lambdaL = zero
+    if (myisnan(lambdaL)) then
+      lambdaL = zero
+    end if
 
     ! Finally, communicate the step size across processes and return
-    call mpi_allreduce(lambdaL, lambdaP, 1_intType, adflow_real, &
+    ! mpi allreduce is not defined for complex numbers with the min operation
+    ! so we will use the lambdaP_recv variable to receive
+    call mpi_allreduce(lambdaL, lambdaP_recv, 1_intType, MPI_DOUBLE, &
          mpi_min, ADflow_comm_world, ierr)
     call EChk(ierr,__FILE__,__LINE__)
+
+#ifndef USE_COMPLEX
+    lambdaP = lambdaP_recv
+#else
+    ! finally, as a safety check, purge the complex part of lambda
+    lambdaP = cmplx(lambdaP_recv, 0.0_realType)
+#endif
 
   end subroutine physicalityCheckANK
 
@@ -3184,7 +3270,8 @@ contains
     use blockPointers, only : ndom, il, jl, kl
     use flowVarRefState, only : nw, nwf, nt1,nt2
     use inputtimespectral, only : nTimeIntervalsSpectral
-    use utils, only : setPointers, EChk, myisnan
+    use utils, only : setPointers, EChk
+    use genericISNAN, only : myisnan
     use communication, only : ADflow_comm_world
     implicit none
 
@@ -3196,8 +3283,8 @@ contains
     real(kind=realType), pointer :: wvec_pointer(:)
     real(kind=realType), pointer :: dvec_pointer(:)
     real(kind=alwaysRealType) :: lambdaL ! L is for local
-    real(kind=realType) :: ratio
-
+    real(kind=alwaysRealType) :: lambdaP_recv ! to receive the global step
+    real(kind=alwaysRealType) :: ratio
 
     ! Determine the maximum step size that would yield
     ! a maximum change of 10% in density, total energy,
@@ -3234,7 +3321,11 @@ contains
                         ! if coupled ank is used, nstate = nw and this loop is executed
                         ! if no turbulence variables, this loop will be automatically skipped
                         ! check turbulence variable
+#ifndef USE_COMPLEX
                         ratio = (wvec_pointer(ii)/(dvec_pointer(ii)+eps))* ANK_physLSTolTurb
+#else
+                        ratio = (real(wvec_pointer(ii))/real(dvec_pointer(ii)+eps))* real(ANK_physLSTolTurb)
+#endif
                         ! if the ratio is less than min step, the update is either
                         ! in the positive direction, therefore we do not clip it,
                         ! or the update is very limiting, so we just clip the
@@ -3278,12 +3369,23 @@ contains
     call EChk(ierr,__FILE__,__LINE__)
 
     ! Make sure that we did not get any NaN's in the process
-    if (isnan(lambdaL)) lambdaL = zero
+    if (myisnan(lambdaL)) then
+      lambdaL = zero
+    end if
 
     ! Finally, communicate the step size across processes and return
-    call mpi_allreduce(lambdaL, lambdaP, 1_intType, adflow_real, &
+    ! mpi allreduce is not defined for complex numbers with the min operation
+    ! so we will use the lambdaP_recv variable to receive
+    call mpi_allreduce(lambdaL, lambdaP_recv, 1_intType, MPI_DOUBLE, &
          mpi_min, ADflow_comm_world, ierr)
     call EChk(ierr,__FILE__,__LINE__)
+
+#ifndef USE_COMPLEX
+    lambdaP = lambdaP_recv
+#else
+    ! finally, as a safety check, purge the complex part of lambda
+    lambdaP = cmplx(lambdaP_recv, 0.0_realType)
+#endif
 
   end subroutine physicalityCheckANKTurb
 
@@ -3296,10 +3398,10 @@ contains
     use blockPointers, only : nDom, flowDoms
     use inputIteration, only : L2conv
     use inputTimeSpectral, only : nTimeIntervalsSpectral
-    use inputDiscretization, only : approxSA
+    use inputDiscretization, only : approxSA, orderturb
     use iteration, only : approxTotalIts, totalR0, totalR, currentLevel
-    use utils, only : EChk, setPointers, myisnan
-    use turbMod, only : secondOrd
+    use utils, only : EChk, setPointers
+    use genericISNAN, only : myisnan
     use solverUtils, only : computeUTau
     use NKSolver, only : getEwTol
     use BCRoutines, only : applyAllBC, applyAllBC_block
@@ -3311,14 +3413,14 @@ contains
     implicit none
 
     ! Working Variables
-    integer(kind=intType) :: ierr, maxIt, kspIterations, nn, sps, reason, nHist, iter, feval
+    integer(kind=intType) :: ierr, maxIt, kspIterations, nn, sps, reason, nHist, iter, feval, orderturbsave
     integer(kind=intType) :: i,j,k,n
     real(kind=realType) :: atol, val, v2, factK, gm1
     real(kind=alwaysRealType) :: rtol, totalR_dummy, linearRes, norm
     real(kind=alwaysRealType) :: resHist(ANK_maxIter+1)
     real(kind=alwaysRealType) :: unsteadyNorm, unsteadyNorm_old
     real(kind=alwaysRealType) :: linResMonitorTurb, totalRTurb
-    logical :: secondOrdSave, correctForK, LSFailed
+    logical :: correctForK, LSFailed
 
     ! Calculate the residuals and set rVecTurb before the first iteration
     call blocketteRes(useFlowRes=.False.,useStoreWall=.False.)
@@ -3345,7 +3447,12 @@ contains
         ANK_iterTurb = ANK_iterTurb + 1
 
         ! Start with trying to take the full step set by the user.
+#ifndef USE_COMPLEX
         lambdaTurb = ANK_StepFactor
+#else
+        ! make sure we zero out the complex part of the step size
+        lambdaTurb = cmplx(real(ANK_StepFactor), 0.0_realType)
+#endif
 
         ! Dummy matrix assembly for the matrix-free matrix
         call MatAssemblyBegin(dRdwTurb, MAT_FINAL_ASSEMBLY, ierr)
@@ -3356,8 +3463,8 @@ contains
         if (totalR > ANK_secondOrdSwitchTol*totalR0) then
             ! Save if second order turbulence is used, we will only use 1st order during ANK (only matters for the coupled solver)
             approxSA = .True.
-            secondOrdSave = secondOrd
-            secondOrd =.False.
+            orderturbsave = orderturb
+            orderturb = firstOrder
 
             ! Determine the relative convergence for the KSP solver
             rtol = ANK_rtol ! Just use the input relative tolerance for approximate fluxes
@@ -3371,12 +3478,24 @@ contains
             rtol = min(ANK_rtol, rtol)
         end if
 
+        ! also check if we are using approxSA always
+        if (ANK_useApproxSA) &
+           approxSA = .True.
+
         ! Record the total residual and relative convergence for next iteration
         totalR_old = totalR
         rtolLast = rtol
 
         ! Set all tolerances for linear solve:
+#ifndef USE_COMPLEX
+        ! in the real mode, we set the atol slightly lower than the target L2 convergence
+        ! the reasoning for this is detailed in the NKStep subroutine
         atol = totalR0*L2Conv*0.01_realType
+#else
+        ! in complex mode, we want to tightly solve the linear system every time
+        ! again, see the NKStep subroutine for the explanation
+        atol = totalR0*L2Conv*1e-6_realType
+#endif
 
         ! Set the iteration limit to maxIt, determined by which fluxes are used.
         ! This is because ANK step require 0.1 convergence for stability during initial stages.
@@ -3418,9 +3537,13 @@ contains
         ! Return previously changed variables back to normal, VERY IMPORTANT
         if (totalR > ANK_secondOrdSwitchTol*totalR0) then
             ! Replace the second order turbulence option
-            secondOrd = secondOrdSave
+            orderturb = orderturbsave
             approxSA = .False.
         end if
+
+        ! put back the approxsa flag if we were using it
+        if (ANK_useApproxSA) &
+          approxSA = .False.
 
         ! Compute the maximum step that will limit the change
         ! in SA variable to some user defined fraction.
@@ -3452,7 +3575,7 @@ contains
         ! initialize this outside the ls
         LSFailed = .False.
 
-        if ((unsteadyNorm > totalRTurb*ANK_unstdyLSTol .or. isnan(unsteadyNorm))) then
+        if ((unsteadyNorm > totalRTurb*ANK_unstdyLSTol .or. myisnan(unsteadyNorm))) then
             ! The unsteady residual is too high or we have a NAN. Do a
             ! backtracking line search until we get a residual that is lower.
 
@@ -3482,7 +3605,7 @@ contains
                 call VecNorm(rVecTurb, NORM_2, unsteadyNorm, ierr)
                 call EChk(ierr, __FILE__, __LINE__)
 
-                if (unsteadyNorm > totalRTurb*ANK_unstdyLSTol .or. isnan(unsteadyNorm)) then
+                if (unsteadyNorm > totalRTurb*ANK_unstdyLSTol .or. myisnan(unsteadyNorm)) then
 
                     ! Restore back to the original wVec
                     call VecAXPY(wVecTurb, lambdaTurb, deltaWTurb, ierr)
@@ -3497,7 +3620,7 @@ contains
                 end if
             end do backtrack
 
-            if (LSFailed .or. isnan(unsteadyNorm)) then
+            if (LSFailed .or. myisnan(unsteadyNorm)) then
                 ! the line search wasn't much help.
 
                 if (ANK_CFL > ANK_CFLMin) then
@@ -3565,11 +3688,11 @@ contains
     use inputPhysics, only : equations
     use inputIteration, only : L2conv
     use inputTimeSpectral, only : nTimeIntervalsSpectral
-    use inputDiscretization, only : lumpedDiss, approxSA
+    use inputDiscretization, only : lumpedDiss, approxSA, orderturb
     use iteration, only : approxTotalIts, totalR0, totalR, stepMonitor, linResMonitor, currentLevel, iterType
-    use utils, only : EChk, setPointers, myisnan
-    use turbAPI, only : turbSolveSegregated
-    use turbMod, only : secondOrd
+    use utils, only : EChk, setPointers
+    use genericISNAN, only : myisnan
+    use turbAPI, only : turbSolveDDADI
     use solverUtils, only : computeUTau
     use adjointUtils, only : referenceShockSensor
     use NKSolver, only : setRVec, getEwTol
@@ -3588,13 +3711,13 @@ contains
     logical, intent(in) :: firstCall
 
     ! Working Variables
-    integer(kind=intType) :: ierr, maxIt, kspIterations, nn, sps, reason, nHist, iter, feval
+    integer(kind=intType) :: ierr, maxIt, kspIterations, nn, sps, reason, nHist, iter, feval, orderturbsave
     integer(kind=intType) :: i,j,k
     real(kind=realType) :: atol, val, v2, factK, gm1
     real(kind=alwaysRealType) :: rtol, totalR_dummy, linearRes, norm
     real(kind=alwaysRealType) :: resHist(ANK_maxIter+1)
-    real(kind=alwaysRealType) :: unsteadyNorm, unsteadyNorm_old
-    logical :: secondOrdSave, correctForK, LSFailed
+    real(kind=alwaysRealType) :: unsteadyNorm, unsteadyNorm_old, rel_pcUpdateTol
+    logical :: correctForK, LSFailed
 
     ! Enter this check if this is the first ANK step OR we are switching to the coupled ANK solver
     if (firstCall .or. &
@@ -3627,7 +3750,7 @@ contains
        call setwVecANK(wVec,1,nstate)
 
        ! Evaluate the residual before we start
-       call blocketteRes(useUpdateDt=.True.)
+       call blocketteRes(useUpdateIntermed=.True.)
        if (ANK_coupled) then
           call setRvec(rVec)
        else
@@ -3659,13 +3782,28 @@ contains
        ANK_iter = ANK_iter + 1
     end if
 
+    ! figure out if we want to scale the ANKPCUpdateTol
+    if (.not. ANK_coupled) then
+      rel_pcUpdateTol = ANK_pcUpdateTol
+    else
+      ! for coupled ANK, we dont want to update the PC as frequently,
+      ! so we reduce the relative tol by 4 orders of magnitude,
+      ! *if* we are converged past pc update cutoff wrt free stream already
+      if (totalR / totalR0 .lt. ANK_pcUpdateCutoff) then
+         rel_pcUpdateTol = ANK_pcUpdateTol * 1e-4_realType
+      else
+         ! if we are not that far down converged, use the option directly
+         rel_pcUpdateTol = ANK_pcUpdateTol
+      end if
+    end if
+
     ! Compute the norm of rVec, which is identical to the
     ! norm of the unsteady residual vector.
     call VecNorm(rVec, NORM_2, unsteadyNorm_old, ierr)
     call EChk(ierr, __FILE__, __LINE__)
 
     ! Determine if if we need to form the Preconditioner
-    if (mod(ANK_iter, ANK_jacobianLag) == 0 .or. totalR/totalR_pcUpdate < ANK_pcUpdateTol) then
+    if (mod(ANK_iter, ANK_jacobianLag) == 0 .or. totalR/totalR_pcUpdate < rel_pcUpdateTol) then
 
        ! First of all, update the minimum cfl wrt the overall convergence
        ANK_CFLMin = min(ANK_CFLLimit, ANK_CFLMinBase*(totalR0/totalR)**ANK_CFLExponent)
@@ -3734,7 +3872,12 @@ contains
     end if
 
     ! Start with trying to take the full step set by the user.
+#ifndef USE_COMPLEX
     lambda = ANK_StepFactor
+#else
+    ! make sure we zero out the complex part of the step size
+    lambda = cmplx(real(ANK_StepFactor), 0.0_realType)
+#endif
 
     ! Dummy matrix assembly for the matrix-free matrix
     call MatAssemblyBegin(dRdw, MAT_FINAL_ASSEMBLY, ierr)
@@ -3755,9 +3898,9 @@ contains
        lumpedDiss = .True.
        approxSA = .True.
 
-       ! Save if second order turbulence is used, we will only use 1st order during ANK (only matters for the coupled solver)
-       secondOrdSave = secondOrd
-       secondOrd =.False.
+       ! Save the turbulence order, we will only use 1st order during ANK (only matters for the coupled solver)
+       orderturbsave = orderturb
+       orderturb = firstOrder
 
        ! Calculate the shock sensor here because the approximate routines do not
        call referenceShockSensor()
@@ -3775,12 +3918,24 @@ contains
        rtol = min(ANK_rtol, rtol)
     end if
 
+    ! also check if we are using approxSA always
+    if (ANK_useApproxSA) &
+      approxSA = .True.
+
     ! Record the total residual and relative convergence for next iteration
     totalR_old = totalR
     rtolLast = rtol
 
     ! Set all tolerances for linear solve:
+#ifndef USE_COMPLEX
+    ! in the real mode, we set the atol slightly lower than the target L2 convergence
+    ! the reasoning for this is detailed in the NKStep subroutine
     atol = totalR0*L2Conv*0.01_realType
+#else
+    ! in complex mode, we want to tightly solve the linear system every time
+    ! again, see the NKStep subroutine for the explanation
+    atol = totalR0*L2Conv*1e-6_realType
+#endif
 
     ! Set the iteration limit to maxIt, determined by which fluxes are used.
     ! This is because ANK step require 0.1 convergence for stability during initial stages.
@@ -3826,10 +3981,14 @@ contains
        lumpedDiss = .False.
        approxSA = .False.
 
-       ! Replace the second order turbulence option
-       secondOrd = secondOrdSave
+       ! Replace turbulence order
+       orderturb = orderturbsave
 
     end if
+
+   ! put back the approxsa flag if we were using it
+    if (ANK_useApproxSA) &
+      approxSA = .False.
 
     ! Compute the maximum step that will limit the change in pressure
     ! and energy to some user defined fraction.
@@ -3861,7 +4020,7 @@ contains
     ! initialize this outside the ls
     LSFailed = .False.
 
-    if ((unsteadyNorm > unsteadyNorm_old*ANK_unstdyLSTol .or. isnan(unsteadyNorm))) then
+    if ((unsteadyNorm > unsteadyNorm_old*ANK_unstdyLSTol .or. myisnan(unsteadyNorm))) then
        ! The unsteady residual is too high or we have a NAN. Do a
        ! backtracking line search until we get a residual that is lower.
 
@@ -3891,7 +4050,7 @@ contains
           call VecNorm(rVec, NORM_2, unsteadyNorm, ierr)
           call EChk(ierr, __FILE__, __LINE__)
 
-          if (unsteadyNorm > unsteadyNorm_old*ANK_unstdyLSTol .or. isnan(unsteadyNorm)) then
+          if (unsteadyNorm > unsteadyNorm_old*ANK_unstdyLSTol .or. myisnan(unsteadyNorm)) then
 
              ! Restore back to the original wVec
              call VecAXPY(wVec, lambda, deltaW, ierr)
@@ -3906,7 +4065,7 @@ contains
           end if
        end do backtrack
 
-       if (LSFailed .or. isnan(unsteadyNorm)) then
+       if (LSFailed .or. myisnan(unsteadyNorm)) then
           ! the line search wasn't much help.
 
           if (ANK_CFL > ANK_CFLMin) then
@@ -3939,7 +4098,7 @@ contains
         if (ANK_useTurbDADI) then
             ! actually do the turbulence update
             call computeUtau
-            call turbSolveSegregated
+            call turbSolveDDADI
         else
             call ANKTurbSolveKSP
         end if
@@ -3949,7 +4108,7 @@ contains
     ! also need the to update the update the time step and the
     ! viscWall pointer stuff
 
-    call blocketteRes(useUpdateDt=.True.)
+    call blocketteRes(useUpdateIntermed=.True.)
 
     feval = feval + 1
     if (ANK_coupled) then

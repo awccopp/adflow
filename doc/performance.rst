@@ -13,25 +13,26 @@ processors possible. This will generally mean that memory usage will
 be at, or near the maximum per core on the specific machine you are
 using. Smaller processor counts minimize parallel losses, especially
 from the breakdown of the effectiveness of the ASM/ILU preconditioner.
+A strong scaling study for ADflow can be found in Table 7 of `this paper <http://www.umich.edu/~mdolaboratory/pdf/Kenway2019a.pdf>`__.
 
 For the following analysis options:
 
 * RANS
 * SA turbulence model
-* ILUFil = 2
-* ASMOverlap = 2
-* adjointSubspaceSize = 150
-* viscPC = False
-* useMatrixFreedRdw = True
+* :py:data:`ILUFill` = 2
+* :py:data:`ASMOverlap` = 2
+* :py:data:`adjointSubspaceSize` = 150
+* :py:data:`viscPC` = False
+* :py:data:`useMatrixFreedrdw` = True
 
-ADflow will be able to run ~40\,000 cells/Gb of main memory. This
+ADflow will be able to run ~40\,000 cells/GB of main memory. This
 figure includes some additional overhead for the mesh movement
 algorithm as well. Increasing the amount of ILU fill, the ASM overlap,
 or subspace size will increase memory usage. The viscPC option will
 increase the the total memory by a factor of approximately
 2-3. Storing dRdw will increase memory usage by about 50%. Increasing
 any of these options will increase the memory usage and reduce the
-number of cells that will fit in 1Gb. 
+number of cells that will fit in 1GB.
 
 Run-time performance can vary widely depending on the particular case
 one is solving. A useful, but somewhat imperfect metric that can be

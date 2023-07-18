@@ -16,19 +16,9 @@ module cartMesh
     use blockPointers
     use surfaceFamilies, only : BCFamGroups
     use su_cgns
-#include <petscversion.h>
-#if PETSC_VERSION_GE(3,8,0)
 #include <petsc/finclude/petsc.h>
+    use petsc
     implicit none
-#else
-    implicit none
-#define PETSC_AVOID_MPIF_H
-#include "petsc/finclude/petscsys.h"
-#include "petsc/finclude/petscvec.h"
-#include "petsc/finclude/petscdmda.h"
-#include "petsc/finclude/petscvec.h90"
-#include "petsc/finclude/petscdmda.h90"
-#endif
 
     ! Input Params
     integer(kind=intType), intent(in) :: level, sps
@@ -890,18 +880,9 @@ module cartMesh
 
   subroutine writeCartMesh(blankVec, cellDims, xMin, h)
 
-#include <petscversion.h>
-#if PETSC_VERSION_GE(3,8,0)
 #include <petsc/finclude/petsc.h>
-  use petsc
-  implicit none
-#else
-  implicit none
-#define PETSC_AVOID_MPIF_H
-#include "petsc/finclude/petscsys.h"
-#include "petsc/finclude/petscvec.h"
-#include "petsc/finclude/petscvec.h90"
-#endif
+   use petsc
+   implicit none
 
     ! Input
     integer(kind=intType), intent(in), dimension(3) :: cellDims
@@ -912,7 +893,7 @@ module cartMesh
     integer(kind=intType) :: ierr
 
     ! CGNS
-    character*32 :: coorNames(3)
+    character(len=32) :: coorNames(3)
     integer(kind=intType) :: base, zoneID, coordID, cg, zone,  iField, iSol, i, j, k, iDim
     real(kind=realType), dimension(:, :, :, :), allocatable :: xTmp
     real(kind=realType), dimension(:), pointer :: cartPointer

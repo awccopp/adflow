@@ -845,11 +845,12 @@ nadvloopspectral:do ii=1,nadv
   end subroutine prodwmag2
 !  differentiation of turbadvection in forward (tangent) mode (with options i4 dr8 r8):
 !   variations   of useful results: *scratch
-!   with respect to varying inputs: *w *scratch *vol *si *sj *sk
-!   rw status of diff variables: *w:in *scratch:in-out *vol:in
-!                *si:in *sj:in *sk:in
-!   plus diff mem management of: w:in scratch:in vol:in si:in sj:in
-!                sk:in
+!   with respect to varying inputs: *sfacei *sfacej *sfacek *w
+!                *scratch *vol *si *sj *sk
+!   rw status of diff variables: *sfacei:in *sfacej:in *sfacek:in
+!                *w:in *scratch:in-out *vol:in *si:in *sj:in *sk:in
+!   plus diff mem management of: sfacei:in sfacej:in sfacek:in
+!                w:in scratch:in vol:in si:in sj:in sk:in
   subroutine turbadvection_d(madv, nadv, offset, qq)
 !
 !       turbadvection discretizes the advection part of the turbulent
@@ -872,9 +873,11 @@ nadvloopspectral:do ii=1,nadv
 !
     use constants
     use blockpointers, only : nx, ny, nz, il, jl, kl, vol, vold, &
-&   sfacei, sfacej, sfacek, w, wd, si, sid, sj, sjd, sk, skd, &
-&   addgridvelocities, bmti1, bmti2, bmtj1, bmtj2, bmtk1, bmtk2, scratch&
-&   , scratchd
+&   sfacei, sfaceid, sfacej, sfacejd, sfacek, sfacekd, w, wd, si, sid, &
+&   sj, sjd, sk, skd, addgridvelocities, bmti1, bmti2, bmtj1, bmtj2, &
+&   bmtk1, bmtk2, scratch, scratchd
+    use inputdiscretization, only : orderturb
+    use iteration, only : groundlevel
     use turbmod, only : secondord
     implicit none
 !
@@ -918,6 +921,11 @@ nadvloopspectral:do ii=1,nadv
     real(kind=realtype) :: abs2
     real(kind=realtype) :: abs1
     real(kind=realtype) :: abs0
+! determine whether or not a second order discretization for the
+! advective terms must be used.
+    secondord = .false.
+    if (groundlevel .eq. 1_inttype .and. orderturb .eq. secondorder) &
+&     secondord = .true.
 ! initialize the grid velocity to zero. this value will be used
 ! if the block is not moving.
     qs = zero
@@ -937,7 +945,8 @@ nadvloopspectral:do ii=1,nadv
           volid = -(half*vold(i, j, k)/vol(i, j, k)**2)
           voli = half/vol(i, j, k)
           if (addgridvelocities) then
-            qsd = (sfacek(i, j, k)+sfacek(i, j, k-1))*volid
+            qsd = (sfacekd(i, j, k)+sfacekd(i, j, k-1))*voli + (sfacek(i&
+&             , j, k)+sfacek(i, j, k-1))*volid
             qs = (sfacek(i, j, k)+sfacek(i, j, k-1))*voli
           end if
 ! compute the normal velocity, where the normal direction
@@ -1131,7 +1140,8 @@ nadvloopspectral:do ii=1,nadv
           volid = -(half*vold(i, j, k)/vol(i, j, k)**2)
           voli = half/vol(i, j, k)
           if (addgridvelocities) then
-            qsd = (sfacej(i, j, k)+sfacej(i, j-1, k))*volid
+            qsd = (sfacejd(i, j, k)+sfacejd(i, j-1, k))*voli + (sfacej(i&
+&             , j, k)+sfacej(i, j-1, k))*volid
             qs = (sfacej(i, j, k)+sfacej(i, j-1, k))*voli
           end if
 ! compute the normal velocity, where the normal direction
@@ -1325,7 +1335,8 @@ nadvloopspectral:do ii=1,nadv
           volid = -(half*vold(i, j, k)/vol(i, j, k)**2)
           voli = half/vol(i, j, k)
           if (addgridvelocities) then
-            qsd = (sfacei(i, j, k)+sfacei(i-1, j, k))*volid
+            qsd = (sfaceid(i, j, k)+sfaceid(i-1, j, k))*voli + (sfacei(i&
+&             , j, k)+sfacei(i-1, j, k))*volid
             qs = (sfacei(i, j, k)+sfacei(i-1, j, k))*voli
           end if
 ! compute the normal velocity, where the normal direction
@@ -1528,6 +1539,8 @@ nadvloopspectral:do ii=1,nadv
     use blockpointers, only : nx, ny, nz, il, jl, kl, vol, sfacei, &
 &   sfacej, sfacek, w, si, sj, sk, addgridvelocities, bmti1, bmti2, &
 &   bmtj1, bmtj2, bmtk1, bmtk2, scratch
+    use inputdiscretization, only : orderturb
+    use iteration, only : groundlevel
     use turbmod, only : secondord
     implicit none
 !
@@ -1568,6 +1581,11 @@ nadvloopspectral:do ii=1,nadv
     real(kind=realtype) :: abs2
     real(kind=realtype) :: abs1
     real(kind=realtype) :: abs0
+! determine whether or not a second order discretization for the
+! advective terms must be used.
+    secondord = .false.
+    if (groundlevel .eq. 1_inttype .and. orderturb .eq. secondorder) &
+&     secondord = .true.
 ! initialize the grid velocity to zero. this value will be used
 ! if the block is not moving.
     qs = zero

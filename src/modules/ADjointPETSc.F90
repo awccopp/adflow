@@ -4,22 +4,16 @@ module ADjointPETSc
   !      solution of the discrete adjoint equations.
   !
   use constants
-#include <petscversion.h>
-#if PETSC_VERSION_GE(3,8,0)
 #include <petsc/finclude/petsc.h>
   use petsc
   implicit none
-#else
-  implicit none
-#define PETSC_AVOID_MPIF_H
-#include "petsc/finclude/petsc.h"
-#include "petsc/finclude/petscvec.h90"
-#endif
 
   Mat     dRdWT, dRdWPreT
 
   ! These are empty vectors
   Vec     w_like1, w_like2, psi_like1, psi_like2, psi_like3, x_like
+  ! This logical is used to indicate whether the vectors have been created
+  logical :: adjointPETScPreProcVarsAllocated
   PetscErrorCode PETScIerr
   PetscFortranAddr   matfreectx(1)
 

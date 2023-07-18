@@ -69,9 +69,9 @@ contains
     if (myid == 0) then
        ! Now dump out who owns what:
        do i=1, overlap%nrow
-          write(*, "(a,I4, a)", advance='no'), 'Row:', i, "   "
+          write(*, "(a,I4, a)", advance='no') 'Row:', i, "   "
           do jj=overlap%rowPtr(i), overlap%rowPtr(i+1)-1
-             write(*, "(a,I2, a, e10.5)", advance='no'), "(", overlap%colInd(jj), ")", overlap%data(jj)
+             write(*, "(a,I2, a, es10.5)", advance='no') "(", overlap%colInd(jj), ")", overlap%data(jj)
           end do
           write(*, *) " "
        end do
@@ -79,9 +79,9 @@ contains
        print *, '--------------------------------------'
        ! Now dump out who owns what:
        do i=1, overlap%nRow
-          write(*, "(a,I4, a)", advance='no'), 'Row:', i, "   "
+          write(*, "(a,I4, a)", advance='no') 'Row:', i, "   "
           do jj=overlap%rowPtr(i), overlap%rowPtr(i+1)-1
-             write(*, "(a,I2, a, I8)", advance='no'), "(", overlap%colInd(jj), ")", int(overlap%assignedProc(jj))
+             write(*, "(a,I2, a, I8)", advance='no') "(", overlap%colInd(jj), ")", int(overlap%assignedProc(jj))
           end do
           write(*, *) " "
        end do
@@ -94,8 +94,8 @@ contains
     implicit none
 
     ! Input/Output
-    integer(kind=intType), dimension(n), intent(in) :: sizeArray
     integer(kind=intType), intent(in) :: n
+    integer(kind=intType), dimension(n), intent(in) :: sizeArray
     integer(kind=intType), dimension(0:n), intent(out) :: cumArray
 
     ! Working
@@ -206,8 +206,8 @@ contains
     implicit none
 
     ! Input/Output
-    type(fringeType), intent(in), dimension(n) :: fringes
     integer(kind=intType), intent(in) :: n
+    type(fringeType), intent(in), dimension(n) :: fringes
     integer(kind=intType), intent(out) :: nFringeProc
     integer(kind=intType), intent(out) :: fringeProc(nProc), cumFringeProc(1:nProc+1)
 
@@ -243,8 +243,8 @@ contains
     implicit none
 
     ! Input Params
-    type(oversetBlock), dimension(n), intent(inout) :: oBLocks
     integer(kind=intType) :: n
+    type(oversetBlock), dimension(n), intent(inout) :: oBLocks
 
     ! Working Parameters
     integer(kind=intType) :: i
@@ -277,8 +277,8 @@ contains
     implicit none
 
     ! Input Params
-    type(oversetFringe), dimension(n), intent(inout) :: oFringes
     integer(kind=intType) :: n
+    type(oversetFringe), dimension(n), intent(inout) :: oFringes
 
     ! Working Parameters
     integer(kind=intType) :: i
@@ -323,8 +323,8 @@ contains
     implicit none
 
     ! Input Params
-    type(oversetWall), dimension(n), intent(inout) :: oSurfs
     integer(kind=intType) :: n
+    type(oversetWall), dimension(n), intent(inout) :: oSurfs
 
     ! Working Parameters
     integer(kind=intType) :: i
@@ -1561,6 +1561,7 @@ contains
     use stencils, only : visc_drdw_stencil, N_visc_drdw
     use communication, only : myid, adflow_comm_world
     use utils, only : setPointers, EChk
+    use inputOverset, only : oversetDebugPrint
     implicit none
 
     ! Input/Output
@@ -1595,7 +1596,8 @@ contains
                       end if
                    end do stencilLoop
                    if (badCell .and. printBadCells) then
-                      print *,'Error in connectivity at :',nbkglobal, i+iBegOr, j+jBegOr, k+kBegOr
+                      if (oversetDebugPrint) &
+                        print *,'Error in connectivity at :',nbkglobal, i+iBegOr, j+jBegOr, k+kBegOr
                       ! we can modify iBlankLast because this is the last checkOverset call.
                       ! we set iBlankLast to -5 to mark orphan cells, this value will then
                       ! be moved to iBlank after we are done with other loops.
@@ -2151,7 +2153,7 @@ contains
 
   function checkOversetPresent()
 
-    ! This routine determines if there are any oveset boundaries
+    ! This routine determines if there are any overset boundaries
     ! present in the mesh.
 
     use constants
@@ -2215,8 +2217,10 @@ contains
           do j=2, jl
              do i=2, il
 
+                if (iblank(i,j,k) == -4) then
+                   nExplicitBlanked = nExplicitBlanked + 1
 
-                if (isReceiver(status(i, j, k))) then
+                else if (isReceiver(status(i, j, k))) then
                    iblank(i, j, k) = -1
                    nFringe = nFringe + 1
 
@@ -2233,22 +2237,17 @@ contains
                    nBlank = nBlank + 1
 
                 else
-                   if (iblank(i,j,k) == -4) then
-                      ! do nothing. It is an explict hole.
-                      nExplicitBlanked = nExplicitBlanked + 1
+                   ! We need to explictly make sure forced receivers
+                   ! *NEVER EVER EVER EVER* get set as compute cells.
+                   if (forcedRecv(i,j,k) .ne. 0) then
+                      ! This is REALLY Bad. This cell must be a forced
+                      ! receiver but never found a donor.
+                      iblank(i,j,k) = 0
+                      nBlank = nBlank + 1
                    else
-                      ! We need to explictly make sure forced receivers
-                      ! *NEVER EVER EVER EVER* get set as compute cells.
-                      if (forcedRecv(i,j,k) .ne. 0) then
-                         ! This is REALLY Bad. This cell must be a forced
-                         ! receiver but never found a donor.
-                         iblank(i,j,k) = 0
-                         nBlank = nBlank + 1
-                      else
-                         ! Compute cell
-                         nCompute = nCompute + 1
-                         iblank(i,j,k) = 1
-                      end if
+                      ! Compute cell
+                      nCompute = nCompute + 1
+                      iblank(i,j,k) = 1
                    end if
                 end if
              end do
@@ -2317,7 +2316,7 @@ contains
                      x(i-1, j  , k  , :) + &
                      x(i  , j  , k  , :))
 
-                write(19, "(E18.10, E18.10, E18.10, I3)"), xp(1), xp(2), xp(3), iblank(i, j, k)
+                write(19, "(ES18.10, ES18.10, ES18.10, I3)") xp(1), xp(2), xp(3), iblank(i, j, k)
              end do
           end do
        end do
@@ -2409,18 +2408,9 @@ contains
     use communication, only : adflow_comm_world, myid
     use inputTimeSpectral, only : nTimeIntervalsSpectral
     use utils, only : setPointers, EChk, terminate
-#include <petscversion.h>
-#if PETSC_VERSION_GE(3,8,0)
 #include <petsc/finclude/petsc.h>
-  use petsc
-  implicit none
-#else
-  implicit none
-#define PETSC_AVOID_MPIF_H
-#include "petsc/finclude/petscsys.h"
-#include "petsc/finclude/petscvec.h"
-#include "petsc/finclude/petscvec.h90"
-#endif
+    use petsc
+    implicit none
 
     ! Input/Output
     integer(kind=intType), intent(in) :: n

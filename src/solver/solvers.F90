@@ -20,6 +20,7 @@ contains
     use utils, only : eulerWallsPresent
     use multiGrid, only : transferToFineGrid
     use partitioning, only : updateCoorFineMesh
+    use commonFormats, only : stringInt1
     implicit none
     !
     !      Local variables.
@@ -86,9 +87,8 @@ contains
           if(myID == 0) then
              if (printIterations) then
                 print "(a)", "#"
-                print 100, currentLevel
+                print stringInt1, "# Going down to grid level ", currentLevel
                 print "(a)", "#"
-100             format("# Going down to grid level",1X,I1)
              end if
           endif
 
@@ -555,10 +555,9 @@ contains
        numberString = adjustl(numberString)
 
        print "(a)", "#"
-       print 100, groundLevel, trim(numberString)
+       print "(A, I1, 3(A))", "# Grid ", groundLevel,": Performing ", trim(numberString), &
+         " explicit Runge Kutta time steps."
        print "(a)", "#"
-100    format("# Grid",1x,i1,": Performing",1x,a,1x, &
-            "explicit Runge Kutta time steps.")
 
        ! Also write the convergence header. Technically this is
        ! not really a convergence history for explicit RK, but
@@ -904,7 +903,7 @@ contains
          getCurrentResidual, NKStep, computeResidualNK
     use anksolver, only : ANK_switchTol, useANKSolver, ANK_CFL, ANKStep, destroyANKSolver
     use inputio, only : forcedLiftFile, forcedSliceFile, forcedVolumeFile, &
-         forcedSurfaceFile, solFile, newGridFile, surfaceSolFile
+         forcedSurfaceFile, solFile, newGridFile, surfaceSolFile, convSolFileBasename
     use inputIteration, only: CFL, CFLCoarse, minIterNum, nCycles, &
          nCyclesCoarse, nMGSteps, nUpdateBleeds, printIterations, rkReset, timeLimit
     use iteration, only : cycling, approxTotalIts, converged, CFLMonitor, &
@@ -912,7 +911,7 @@ contains
          rhoResStart, totalR0, totalRFinal, totalRStart, stepMonitor, linResMonitor, ordersConverged
     use killSignals, only : globalSignal, localSignal, noSignal, routineFailed, signalWrite, &
          signalWriteQuit
-    use monitor, only : writeGrid, writeSurface, writeVolume
+    use monitor, only : writeGrid, writeSurface, writeVolume, writeSolEachIter
     use utils, only: allocConvArrays, convergenceHeader
     use tecplotIO, only : writeTecplot
     use multiGrid, only : setCycleStrategy, executeMGCycle
@@ -930,9 +929,10 @@ contains
     !
     integer :: ierr
     integer(kind=intType) ::  nMGCycles
-    character (len=7) :: numberString
-    logical :: absConv, relConv, firstNK, firstANK
+    character(len=7) :: numberString
+    logical :: absConv, relConv, firstNK, firstANK, old_writeGrid
     real(kind=realType) :: nk_switchtol_save, curTime, ordersConvergedOld
+    character(len=maxStringLen) :: iterFormat
 
     ! Allocate the memory for cycling.
     if (allocated(cycling)) then
@@ -942,8 +942,6 @@ contains
 
     ! Some initializations.
 
-    writeVolume  = .false.
-    writeSurface = .false.
     converged    = .false.
     globalSignal = noSignal
     localSignal  = noSignal
@@ -959,7 +957,7 @@ contains
     nMGCycles = nCycles
     if(groundLevel > 1) nMGCycles = nCyclesCoarse
 
-    ! Allocate (or reallocate) the convergence arry for this solveState.
+    ! Allocate (or reallocate) the convergence array for this solveState.
     call allocConvArrays(nMGCycles)
 
     ! Allocate space for storing hisotry of function evaluations for NK
@@ -983,25 +981,22 @@ contains
        ! Write a message about the number of multigrid iterations
        ! to be performed.
 
+#ifndef USE_COMPLEX
+      iterFormat = "(A, I1, 3(A), I6, A, ES10.2)"
+#else
+      iterFormat = "(A, I1, 3(A), I6, A, 2ES10.2)"
+#endif
+
        write(numberString,"(i6)") nMGCycles
        numberString = adjustl(numberString)
        numberString = trim(numberString)
        if (printIterations) then
           print "(a)", "#"
-          print 102, groundLevel, trim(numberString),minIterNum,(NK_switchTol * totalR0)
+          print iterFormat, "# Grid ", groundLevel,": Performing ", trim(numberString), &
+            " iterations, unless converged earlier. Minimum required iteration before NK switch: ", &
+            minIterNum,". Switch to NK at totalR of: ", (NK_switchTol * totalR0)
           print "(a)", "#"
        end if
-#ifndef USE_COMPLEX
-102    format("# Grid",1X,I1,": Performing",1X,A,1X, &
-            "iterations, unless converged earlier.",&
-            " Minimum required iteration before NK switch: ",&
-            I6,". Switch to NK at totalR of:",1X,e10.2)
-#else
-102    format("# Grid",1X,I1,": Performing",1X,A,1X, &
-            "iterations, unless converged earlier.",&
-            " Minimum required iteration before NK switch: ",&
-            I6,". Switch to NK at totalR of:",1X,2e10.2)
-#endif
 
        if (printIterations)  then
           call convergenceHeader
@@ -1029,6 +1024,10 @@ contains
 
     ! No iteration type for first residual evaluation
     iterType = "    None"
+    ! also no CFL, step size, or linear residual for this iteration
+    CFLMonitor = -1
+    stepMonitor = -1
+    linResMonitor = -1
 
     ! Determine and write the initial convergence info.
     call convergenceInfo
@@ -1182,18 +1181,29 @@ contains
             ierr)
 #endif
 
-       if (globalSignal == signalWrite) then
-
-          ! We have been told to write the solution
-
-          writeGrid = .True.
-          writeVolume = .True.
-          writeSurface = .True.
-
-          surfaceSolFile = forcedSurfaceFile
-          newGridFile = forcedVolumeFile
-          solFile = forcedVolumeFile
-
+       if (globalSignal == signalWrite .or. writeSolEachIter) then
+          ! We have been told to write the solution even though we are not done iterating
+          
+          ! The grid must be written along with the volume solution solution         
+         if (writeVolume) then
+            ! temporary change the writeGrid option
+            old_writeGrid = writeGrid
+            writeGrid = .True.
+         end if
+          
+          if (writeSolEachIter) then
+               write(numberString,"(i7)") iterTot
+               numberString = adjustl(numberString)
+               numberString = trim(numberString)
+               surfaceSolFile = trim(convSolFileBasename)//"_"//trim(numberString)//"_surf.cgns"
+               newGridFile = trim(convSolFileBasename)//"_"//trim(numberString)//"_vol.cgns"
+               solFile = trim(convSolFileBasename)//"_"//trim(numberString)//"_vol.cgns"
+          else
+               surfaceSolFile = forcedSurfaceFile
+               newGridFile = forcedVolumeFile
+               solFile = forcedVolumeFile
+          end if
+          
           call writeSol(fullFamList, size(fullFamList))
 
           ! Also write potential tecplot files. Note that we are not
@@ -1202,6 +1212,11 @@ contains
           call writeTecplot(forcedSliceFile, .True., forcedLiftFile, .True., &
                "", .False., [0], 1)
 
+         if (writeVolume) then
+            ! change the writeGrid option back
+            writeGrid = old_writeGrid
+         end if
+               
           ! Reset the signal
           localSignal = noSignal
        end if
@@ -1246,14 +1261,14 @@ contains
     use inputUnsteady, only : timeIntegrationScheme
     use monitor, only : monLoc, monGlob, nMon, nMonMax, nMonSum, monNames, timeDataArray, &
          showCPU, monRef, convArray, timeUnsteadyRestart, timeArray, timeStepUnsteady, &
-         timeUnsteady, nTimeStepsRestart
+         timeUnsteady, nTimeStepsRestart, solverDataArray, solverTypeArray
     use iteration, only : groundLevel, currentLevel, iterTot, iterType, approxTotalIts, &
          CFLMonitor, stepMonitor, t0solver, converged, linResMonitor
     use killSignals, only : routineFailed, fromPython
     use iteration, only : rhoRes, rhoResStart, totalR, totalRStart, totalR0
     use oversetData, only: oversetPresent
-    use utils, only : setPointers, myisnan, returnFail, maxHDiffMach, maxEddyv, &
-         sumResiduals, sumAllResiduals
+    use utils, only : setPointers, returnFail, maxHDiffMach, maxEddyv, sumResiduals, sumAllResiduals
+    use genericISNAN, only : myisnan
     use surfaceIntegrations, only : integrateSurfaces
     use zipperIntegrations, only : integrateZippers
     use surfaceFamilies, only : fullFamLIst
@@ -1279,7 +1294,7 @@ contains
     ! Determine whether or not the iterations must be written.
 
     writeIterations = .true.
-    if(equationMode          == unsteady .and. &
+    if(equationMode            == unsteady .and. &
          timeIntegrationScheme == explicitRK) writeIterations = .false.
 
     ! Initializations
@@ -1548,7 +1563,7 @@ contains
 
                 write(*,"(i6,1x)",advance="no") timeStepUnsteady + &
                      nTimeStepsRestart
-                write(*,"(e12.5,1x)",advance="no") timeUnsteady + &
+                write(*,"(es12.5,1x)",advance="no") timeUnsteady + &
                      timeUnsteadyRestart
 
              else if(equationMode == timeSpectral) then
@@ -1561,22 +1576,40 @@ contains
                 write(*,"(i6,1x)",advance="no") iterTot
                 write(*,"(i6,1x)",advance="no") approxTotalIts
                 write(*,"(a,1x)", advance="no") iterType
-
+                
+                if( storeConvInnerIter ) then
+                   solverDataArray(iterTot, sps, 1) = approxTotalIts
+                   solverTypeArray(iterTot, sps) = iterType
+                endif
+                
                 if (CFLMonitor < zero) then
                    ! Print dashes if no cfl term is used, i.e. NK solver
                    write(*,"(a,1x)", advance="no") "    ----  "
                 else
 #ifndef USE_COMPLEX
-                   write(*,"(e10.2,1x)",advance="no") CFLMonitor
+                   write(*,"(es10.2,1x)",advance="no") CFLMonitor
+                   if( storeConvInnerIter ) then
+                     solverDataArray(iterTot, sps, 2) = CFLMonitor
+                   endif
 #else
-                   write(*,"(e10.2,1x)",advance="no") real(CFLMonitor)
+                   write(*,"(es10.2,1x)",advance="no") real(CFLMonitor)
 #endif
                 end if
+
+                if (stepMonitor < zero) then
+                  ! Print dashes in the first None iteration
+                  write(*,"(a,1x)", advance="no") " ---- "
+                else
 #ifndef USE_COMPLEX
-                write(*,"(f5.2,2x)",advance="no") stepMonitor
+                  write(*,"(f5.2,2x)",advance="no") stepMonitor
+                  if( storeConvInnerIter ) then
+                     solverDataArray(iterTot, sps, 3) = stepMonitor
+                  endif
 #else
-                write(*,"(f5.2,2x)",advance="no") real(stepMonitor)
+                  write(*,"(f5.2,2x)",advance="no") real(stepMonitor)
 #endif
+                end if
+
                 if (linResMonitor < zero) then
                    ! For RK/DADI just print dashes
                    write(*,"(a,1x)", advance="no") " ----"
@@ -1584,6 +1617,9 @@ contains
 
 #ifndef USE_COMPLEX
                    write(*,"(f5.3,1x)",advance="no") linResMonitor
+                   if( storeConvInnerIter ) then
+                     solverDataArray(iterTot, sps, 4) = linResMonitor
+                  endif
 #else
                    write(*,"(f5.3,1x)",advance="no") real(linResMonitor)
 #endif
@@ -1591,10 +1627,14 @@ contains
 
                 if( showCPU ) then
 #ifndef USE_COMPLEX
-                   write(*,"(e12.5,1x)",advance="no") mpi_wtime() - t0Solver
+                   write(*,"(es12.5,1x)",advance="no") mpi_wtime() - t0Solver
+                   if( storeConvInnerIter ) then
+                     solverDataArray(iterTot, sps, 5) = mpi_wtime() - t0Solver
+                  endif
 #else
-                   write(*,"(e12.5,1x)",advance="no") real(mpi_wtime() - t0Solver)
+                   write(*,"(es12.5,1x)",advance="no") real(mpi_wtime() - t0Solver)
 #endif
+                   
                 end if
              end if
           end if
@@ -1613,12 +1653,24 @@ contains
                cgnsL2resK,    cgnsL2resOmega,   &
                cgnsL2resTau,  cgnsL2resEpsilon, &
                cgnsL2resV2,   cgnsL2resF        )
+#ifndef USE_COMPLEX
              monGlob(mm) = sqrt(monGlob(mm)/nCellGlobal(groundLevel))
+#else
+            ! take the square roots separately in complex mode
+            monGlob(mm) = cmplx(sqrt(real(monGlob(mm)/nCellGlobal(groundLevel))), &
+                               sqrt(aimag(monGlob(mm)/nCellGlobal(groundLevel))))
+#endif
+
              if (monNames(mm) == cgnsL2resRho) then
                 rhoRes = monGlob(mm)
              end if
           case ('totalR')
+#ifndef USE_COMPLEX
              monGlob(mm) = sqrt(monGlob(mm))
+#else
+             ! take the square roots separately in complex mode
+             monGlob(mm) = cmplx(sqrt(real(monGlob(mm))), sqrt(aimag(monGlob(mm))))
+#endif
              totalR = monGlob(mm)
           end select
 
@@ -1627,9 +1679,25 @@ contains
           if (myid == 0 .and. printIterations) then
              ! Write the convergence info to stdout.
 #ifndef USE_COMPLEX
-             write(*,"(e24.16,1x)",advance="no") monGlob(mm)
+             write(*,"(es24.16,1x)",advance="no") monGlob(mm)
 #else
-             write(*,"(2e24.16,1x)",advance="no") monGlob(mm)
+            select case (monNames(mm))
+
+            case (cgnsL2resRho,  cgnsL2resMomx,    &
+                  cgnsL2resMomy, cgnsL2resMomz,    &
+                  cgnsL2resRhoe, cgnsL2resNu,      &
+                  cgnsL2resK,    cgnsL2resOmega,   &
+                  cgnsL2resTau,  cgnsL2resEpsilon, &
+                  cgnsL2resV2,   cgnsL2resF, 'totalR')
+
+               ! we can do a shorter print for residuals because only the leading few digits
+               ! and the exponents are important anyways
+               write(*,'(es16.8,SP,es17.8E3,"i")',advance="no") monGlob(mm)
+
+            case default
+               ! we need to do the regular full print for functionals because they are useful
+               write(*,'(es24.16,SP,es25.16E3,"i")',advance="no") monGlob(mm)
+            end select
 #endif
           end if
 

@@ -43,16 +43,9 @@ contains
 #ifndef USE_COMPLEX
     use masterRoutines, only : block_res_state_d
 #endif
-#include <petscversion.h>
-#if PETSC_VERSION_GE(3,8,0)
 #include <petsc/finclude/petsc.h>
-  use petsc
-  implicit none
-#else
-  implicit none
-#define PETSC_AVOID_MPIF_H
-#include "petsc/finclude/petsc.h"
-#endif
+    use petsc
+    implicit none
 
     ! PETSc Matrix Variable
     Mat :: matrix
@@ -66,7 +59,7 @@ contains
     integer(kind=intType) :: ierr, nn, sps, sps2, i, j, k, l, ll, ii, jj, kk
     integer(kind=intType) :: nColor, iColor, jColor, irow, icol, fmDim, frow
     integer(kind=intType) :: nTransfer, nState, lStart, lEnd, tmp, icount, cols(8), nCol
-    integer(kind=intType) :: n_stencil, i_stencil, m, iFringe, fInd, lvl
+    integer(kind=intType) :: n_stencil, i_stencil, m, iFringe, fInd, lvl, orderturbsave
     integer(kind=intType), dimension(:, :), pointer :: stencil
     real(kind=alwaysRealType) :: delta_x, one_over_dx
     real(kind=realType) :: weights(8)
@@ -74,7 +67,7 @@ contains
     integer(kind=intType), dimension(2:10) :: coarseRows
     integer(kind=intType), dimension(8, 2:10) :: coarseCols
     integer(kind=intType) :: iBeg, iEnd, jBeg, jEnd, mm, colInd
-    logical :: resetToRANS, secondOrdSave, turbOnly, flowRes, turbRes, buildCoarseMats
+    logical :: resetToRANS, turbOnly, flowRes, turbRes, buildCoarseMats
 
     ! Determine if we are assembling a turb only PC
     turbOnly = .False.
@@ -86,7 +79,7 @@ contains
     if (present(useCoarseMats)) then
        buildCoarseMats = useCoarseMats
     end if
-    
+
     if (turbOnly) then
        ! we are making a PC for turbulence only KSP
        flowRes = .False.
@@ -157,7 +150,7 @@ contains
                       cols(1) = irow
                       nCol = 1
 
-                      if (buildCoarseMats) then 
+                      if (buildCoarseMats) then
                          do lvl=1, agmgLevels-1
                             coarseRows(lvl+1) = coarseIndices(nn, lvl)%arr(i, j, k)
                             coarseCols(1, lvl+1) = coarseRows(lvl+1)
@@ -186,8 +179,9 @@ contains
 
        ! Very important to use only Second-Order dissipation for PC
        lumpedDiss=.True.
-       secondOrdSave = secondOrd
-       secondOrd = .False.
+       ! also use first order advection terms for turbulence
+       orderturbsave = orderturb
+       orderturb = firstOrder
     else
        if (viscous) then
           stencil => visc_drdw_stencil
@@ -440,17 +434,17 @@ contains
                             cols(1) = flowDoms(nn, level, sps)%globalCell(i, j, k)
                             nCol = 1
 
-                            if (buildCoarseMats) then 
+                            if (buildCoarseMats) then
                                do lvl=1, agmgLevels-1
                                   coarseCols(1, lvl+1) = coarseIndices(nn, lvl)%arr(i, j, k)
                                end do
                             end if
-                            
+
                          else
                             do m=1,8
                                cols(m) = flowDoms(nn, level, sps)%gInd(m, i, j, k)
-                           
-                               if (buildCoarseMats) then 
+
+                               if (buildCoarseMats) then
                                   do lvl=1, agmgLevels-1
                                      coarseCols(m, lvl+1) = coarseOversetIndices(nn, lvl)%arr(m, i, j, k)
                                   end do
@@ -462,7 +456,7 @@ contains
                                  weights)
                             nCol = 8
                          end if
-                      
+
                          colorCheck: if (flowdoms(nn, 1, 1)%color(i, j, k) == icolor) then
 
                             ! i, j, k are now the "Center" cell that we
@@ -486,12 +480,12 @@ contains
                                   irow = flowDoms(nn, level, sps)%globalCell(&
                                        i+ii, j+jj, k+kk)
 
-                                  if (buildCoarseMats) then 
+                                  if (buildCoarseMats) then
                                      do lvl=1, agmgLevels-1
                                         coarseRows(lvl+1) = coarseIndices(nn, lvl)%arr(i+ii, j+jj, k+kk)
                                      end do
                                   end if
-                                  
+
                                   rowBlank: if (flowDoms(nn, level, sps)%iBlank(i+ii, j+jj, k+kk) == 1) then
 
                                      centerCell: if ( ii == 0 .and. jj == 0  .and. kk == 0) then
@@ -541,7 +535,7 @@ contains
           call EChk(ierr, __FILE__, __LINE__)
        end do
     end if
-    
+
     ! Maybe we can do something useful while the communication happens?
     ! Deallocate the temporary memory used in this routine.
 
@@ -566,7 +560,8 @@ contains
     ! Return dissipation Parameters to normal -> VERY VERY IMPORTANT
     if (usePC) then
        lumpedDiss = .False.
-       secondOrd = secondOrdSave
+       ! also recover the turbulence advection order
+       orderturb = orderturbsave
     end if
 
     ! Reset the correct equation parameters if we were useing the frozen
@@ -587,7 +582,7 @@ contains
           call EChk(ierr, __FILE__, __LINE__)
        end do
     end if
-    
+
     call MatSetOption(matrix, MAT_NEW_NONZERO_LOCATIONS, PETSC_FALSE, ierr)
     call EChk(ierr, __FILE__, __LINE__)
 
@@ -604,7 +599,7 @@ contains
       ! Sets a block at irow, icol, if useTranspose is False
       ! Sets a block at icol, irow with transpose of blk if useTranspose is True
 
-      use utils, only : myisnan
+      use genericISNAN, only : myisnan
       implicit none
       real(kind=realType), dimension(nState, nState) :: blk
 
@@ -671,7 +666,7 @@ contains
 
          ! Extension for setting coarse grids:
          if (buildCoarseMats) then
-            if (nCol == 1) then 
+            if (nCol == 1) then
                do lvl=2, agmgLevels
                   if (useTranspose) then
                      ! Loop over the coarser levels
@@ -685,7 +680,7 @@ contains
             else
                do m=1, nCol
                   do lvl=2, agmgLevels
-                     if (coarseCols(m, lvl) >= 0) then 
+                     if (coarseCols(m, lvl) >= 0) then
                         if (useTranspose) then
                            ! Loop over the coarser levels
                            call MatSetValuesBlocked(A(lvl), 1, coarseCols(m, lvl), 1, coarseRows(lvl), &
@@ -714,7 +709,7 @@ contains
     use inputDiscretization, only : useApproxWallDistance
     use inputPhysics, only : wallDistanceNeeded
     use communication, only : adflow_comm_world
-    use wallDistanceData, only : xSurfVec, xSurfVecd, PETSC_DETERMINE
+    use wallDistanceData, only : xSurfVec, xSurfVecd!, PETSC_DETERMINE
     use BCPointers_b
     use adjointVars, only : derivVarsAllocated
     use utils, only : EChk, setPointers, getDirAngle
@@ -801,6 +796,7 @@ contains
                flowDomsd(nn, level, sps)%qz(il,jl,kl), &
                flowDomsd(nn, level, sps)%rlv(0:ib,0:jb,0:kb), &
                flowDomsd(nn, level, sps)%rev(0:ib,0:jb,0:kb), &
+               flowDomsd(nn, level, sps)%dtl(1:ie,1:je,1:ke), &
                flowDomsd(nn, level, sps)%radI(1:ie,1:je,1:ke), &
                flowDomsd(nn, level, sps)%radJ(1:ie,1:je,1:ke), &
                flowDomsd(nn, level, sps)%radK(1:ie,1:je,1:ke), &
@@ -947,6 +943,8 @@ contains
     flowDomsd(nn, level, sps)%rlv = zero
     flowDomsd(nn, level, sps)%rev = zero
 
+    flowDomsd(nn, level, sps)%dtl = zero
+
     flowDomsd(nn, level, sps)%radI = zero
     flowDomsd(nn, level, sps)%radJ = zero
     flowDomsd(nn, level, sps)%radK = zero
@@ -1056,8 +1054,9 @@ contains
 
     ! And the reverse seeds in the actuator zones
     do i=1, nActuatorRegions
-       actuatorRegionsd(i)%F = zero
-       actuatorRegionsd(i)%T = zero
+       actuatorRegionsd(i)%force = zero
+       actuatorRegionsd(i)%torque = zero
+       actuatorRegionsd(i)%heat = zero
     end do
 
   end subroutine zeroADSeeds
@@ -1282,21 +1281,14 @@ contains
     use constants
     use communication, only : adflow_comm_world
     use utils, only : EChk, setPointers
-#include <petscversion.h>
-#if PETSC_VERSION_GE(3,8,0)
 #include <petsc/finclude/petsc.h>
-  use petsc
-  implicit none
-#else
-  implicit none
-#define PETSC_AVOID_MPIF_H
-#include "petsc/finclude/petsc.h"
-#endif
+    use petsc
+    implicit none
 
     Mat matrix
     integer(kind=intType), intent(in) :: blockSize, m, n
     integer(kind=intType), intent(in), dimension(*) :: nnzDiagonal, nnzOffDiag
-    character*(*) :: file
+    character(len=*) :: file
     integer(kind=intType) :: ierr, line
     ! if (blockSize > 1) then
        call MatCreateBAIJ(ADFLOW_COMM_WORLD, blockSize, &
@@ -1352,14 +1344,10 @@ contains
     ! Write the residual norm to stdout every adjMonStep iterations.
 
     if(mod(n, adjMonStep) ==0 ) then
-       if( myid==0 ) write(*, 10) n, rnorm
+       if( myid==0 ) write(*, "(I4, 1X, A, 1X, ES16.10)") n, 'KSP Residual norm', rnorm
     end if
 
     ierr = 0
-
-    ! Output format.
-
-10  format(i4, 1x, 'KSP Residual norm', 1x, e16.10)
 
   end subroutine MyKSPMonitor
 
@@ -1382,7 +1370,7 @@ contains
     !      --> master_PC_KSP --> KSP type set to Richardson with 'globalPreConIts'
     !          |
     !           --> globalPC --> PC type set to 'globalPCType'
-    !               |            Usually Additive Schwartz and overlap is set
+    !               |            Usually Additive Schwarz and overlap is set
     !               |            with 'ASMOverlap'. Use 0 to get BlockJacobi
     !               |
     !               --> subKSP --> KSP type set to Richardon with 'LocalPreConIts'
@@ -1395,16 +1383,10 @@ contains
     ! and if localPreConIts=1 then subKSP is set to preOnly.
     use constants
     use utils, only : ECHk
-#include <petscversion.h>
-#if PETSC_VERSION_GE(3,8,0)
+    use inputADjoint, only : GMRESOrthogType
 #include <petsc/finclude/petsc.h>
-  use petsc
-  implicit none
-#else
-  implicit none
-#define PETSC_AVOID_MPIF_H
-#include "petsc/finclude/petsc.h"
-#endif
+    use petsc
+    implicit none
 
     ! Input Params
     KSP kspObject
@@ -1418,7 +1400,7 @@ contains
     PC  master_PC, globalPC, subpc
     KSP master_PC_KSP, subksp
     integer(kind=intType) :: nlocal, first, ierr
- 
+
 
     ! First, KSPSetFromOptions MUST be called
     call KSPSetFromOptions(kspObject, ierr)
@@ -1432,9 +1414,21 @@ contains
     call KSPGMRESSetRestart(kspObject, gmresRestart, ierr)
     call EChk(ierr, __FILE__, __LINE__)
 
-    ! If you're using GMRES, set refinement type
-    call KSPGMRESSetCGSRefinementType(kspObject, &
-         KSP_GMRES_CGS_REFINE_IFNEEDED, ierr)
+    ! Set the orthogonalization method for GMRES
+    select case (GMRESOrthogType)
+       case ('modified_gram_schmidt')
+          ! Use modified Gram-Schmidt
+          call KSPGMRESSetOrthogonalization(kspObject, KSPGMRESModifiedGramSchmidtOrthogonalization, ierr)
+       case ('cgs_never_refine')
+          ! Use classical Gram-Schmidt with no refinement
+          call KSPGMRESSetCGSRefinementType(kspObject, KSP_GMRES_CGS_REFINE_NEVER, ierr)
+       case ('cgs_refine_if_needed')
+          ! Use classical Gram-Schmidt with refinement if needed
+          call KSPGMRESSetCGSRefinementType(kspObject, KSP_GMRES_CGS_REFINE_IFNEEDED, ierr)
+       case ('cgs_always_refine')
+          ! Use classical Gram-Schmidt with refinement at every iteration
+          call KSPGMRESSetCGSRefinementType(kspObject, KSP_GMRES_CGS_REFINE_ALWAYS, ierr)
+    end select
     call EChk(ierr, __FILE__, __LINE__)
 
     ! Set the preconditioner side from option:
@@ -1472,15 +1466,11 @@ contains
 
        call KSPSetType(master_PC_KSP, 'richardson', ierr)
        call EChk(ierr, __FILE__, __LINE__)
-       
-       call KSPMonitorSet(master_PC_KSP, MyKSPMonitor, PETSC_NULL_FUNCTION, &
-            PETSC_NULL_FUNCTION, ierr)
-       call EChk(ierr, __FILE__, __LINE__)
-       
+
        ! Important to set the norm-type to None for efficiency.
        call kspsetnormtype(master_PC_KSP, KSP_NORM_NONE, ierr)
        call EChk(ierr, __FILE__, __LINE__)
-       
+
        ! Do one iteration of the outer ksp preconditioners. Note the
        ! tolerances are unsued since we have set KSP_NORM_NON
        call KSPSetTolerances(master_PC_KSP, PETSC_DEFAULT_REAL, &
@@ -1498,7 +1488,7 @@ contains
        call EChk(ierr, __FILE__, __LINE__)
     end if
 
-    ! Set the type of 'globalPC'. This will almost always be additive schwartz
+    ! Set the type of 'globalPC'. This will almost always be additive Schwarz
     call PCSetType(globalPC, 'asm', ierr)!globalPCType, ierr)
     call EChk(ierr, __FILE__, __LINE__)
 
@@ -1562,18 +1552,11 @@ contains
     ! and if localPreConIts=1 then subKSP is set to preOnly.
     use constants
     use utils, only : ECHk
-    use agmg, only : agmgOuterIts, agmgASMOverlap, agmgFillLevel, agmgMatrixOrdering, & 
+    use agmg, only : agmgOuterIts, agmgASMOverlap, agmgFillLevel, agmgMatrixOrdering, &
          setupShellPC, destroyShellPC, applyShellPC
-#include <petscversion.h>
-#if PETSC_VERSION_GE(3,8,0)
 #include <petsc/finclude/petsc.h>
-  use petsc
-  implicit none
-#else
-  implicit none
-#define PETSC_AVOID_MPIF_H
-#include "petsc/finclude/petsc.h"
-#endif
+    use petsc
+    implicit none
 
     ! Input Params
     KSP kspObject
@@ -1588,7 +1571,7 @@ contains
 
     call KSPSetType(kspObject, kspObjectType, ierr)
     call EChk(ierr, __FILE__, __LINE__)
-    
+
     ! Set the preconditioner side from option:
     if (trim(preConSide) == 'right') then
        call KSPSetPCSide(kspObject, PC_RIGHT, ierr)
@@ -1621,12 +1604,13 @@ contains
     agmgFillLevel = fillLevel
     agmgMatrixOrdering = localMatrixOrdering
   end subroutine setupStandardMultigrid
-  
+
   subroutine destroyPETScVars
 
     use constants
     use ADjointPETSc, only : dRdWT, dRdwPreT, adjointKSP, adjointPETScVarsAllocated
     use inputAdjoint, only : approxPC
+    use agmg, only : destroyAGMG
     use utils, only : EChk
     implicit none
 
@@ -1645,6 +1629,9 @@ contains
 
        call KSPDestroy(adjointKSP, ierr)
        call EChk(ierr,__FILE__,__LINE__)
+
+       call destroyAGMG()
+
        adjointPETScVarsAllocated = .False.
     end if
 
@@ -1698,18 +1685,9 @@ subroutine statePreAllocation(onProc, offProc, wSize, stencil, N_stencil, &
   use inputTimeSpectral , only : nTimeIntervalsSpectral
   use utils, only : setPointers, EChk
   use sorting, only : unique
-#include <petscversion.h>
-#if PETSC_VERSION_GE(3,8,0)
 #include <petsc/finclude/petsc.h>
   use petsc
   implicit none
-#else
-  implicit none
-#define PETSC_AVOID_MPIF_H
-#include "petsc/finclude/petscsys.h"
-#include "petsc/finclude/petscvec.h"
-#include "petsc/finclude/petscvec.h90"
-#endif
 
   ! Subroutine Arguments
   integer(kind=intType), intent(in)  :: wSize
@@ -2258,6 +2236,11 @@ end subroutine statePreAllocation
     ISIZE1OFDrfgamma = ib + 1
     ISIZE2OFDrfgamma = jb + 1
     ISIZE3OFDrfgamma = kb + 1
+
+    ! dtl
+    ISIZE1OFDrfdtl = ie
+    ISIZE2OFDrfdtl = je
+    ISIZE3OFDrfdtl = ke
 
     ! radI
     ISIZE1OFDrfradI = ie

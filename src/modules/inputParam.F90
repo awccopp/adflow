@@ -171,7 +171,7 @@ module inputIO
   ! interrupt.
   character(len=maxStringLen) :: forcedSurfaceFile, forcedVolumeFile
   character(len=maxStringLen) :: forcedLiftFile, forcedSliceFile
-
+  character(len=maxStringLen) :: convSolFileBasename
   ! logical to control the us of the transition model
   logical :: laminarToTurbulent
 
@@ -201,7 +201,7 @@ module inputIteration
   !                   switching to multigrid. Could be useful for
   !                   supersonic problems with strong shocks.
   ! nSubIterTurb:     Number of turbulent subiterations when using
-  !                   a segregated approach for the turbulence.
+  !                   a decoupled approach for the turbulence.
   ! nUpdateBleeds:    Number of iterations after which the bleed
   !                   boundary conditions must be updated.
   ! smoother:         Smoother to be used.
@@ -209,8 +209,8 @@ module inputIteration
   ! nSubiterations:   Maximum number of subiterations used in
   !                   DADI.
   ! turbTreatment:    Treatment of the turbulent transport equations;
-  !                   either segregated or coupled.
-  ! turbSmoother:     Smoother to use in case a segregated solver
+  !                   either decoupled or coupled.
+  ! turbSmoother:     Smoother to use in case a decoupled solver
   !                   is to be used.
   ! turbRelax:        What kind of turbulent relaxation to use.
   !                   Either turbRelaxExplicit or
@@ -290,8 +290,11 @@ end module inputIteration
 
 module inputCostFunctions
   use constants
-  real(kind=realtype) :: sepSensorOffset= zero
-  real(kind=realtype) ::sepSensorSharpness=10.0_realType
+  real(kind=realtype) :: sepSensorOffset = zero
+  real(kind=realtype) :: sepSensorSharpness = 10.0_realType
+  real(kind=realtype) :: cavSensorOffset
+  real(kind=realtype) :: cavSensorSharpness
+  integer(kind=inttype) :: cavExponent
   logical :: computeCavitation
 
 end module inputCostFunctions
@@ -554,6 +557,11 @@ module inputPhysics
   ! muSuthDim:           Reference viscosity at reference temperature for Sutherlands law (SI Units)
   ! TSuthDim:            Reference temperature for Sutherlands law (SI Units)
   ! momentAxis(3,2)      Axis about which to calculate a moment, provided as 2 points in 3-D
+  ! cavitationnumber     Negative Cp value that triggers the traditional
+  !                      step-function based cavitation sensor.
+  ! cpmin_rho            The rho parameter used with the KS-based cavitation sensor.
+  ! cpmin_family         The cpmin for a given surface family that does not use
+  !                      KS-aggregation, but rather an exact min computation.
 
 
   integer(kind=intType) :: equations, equationMode, flowType
@@ -579,6 +587,8 @@ module inputPhysics
   real(kind=realType), dimension(3,2) :: momentAxis
   real(kind=realType) :: SSuthDim, muSuthDim, TSuthDim
   real(kind=realType) :: cavitationnumber
+  real(kind=realType) :: cpmin_rho
+  real(kind=realType), dimension(:), allocatable :: cpmin_family
 
 #ifndef USE_TAPENADE
   real(kind=realType) :: alphad, betad
@@ -667,6 +677,9 @@ module inputTimeSpectral
 
   real(kind=realType), dimension(:,:,:), allocatable :: &
        rotMatrixSpectral
+  logical :: useTSInterpolatedGridVelocity
+
+  real(kind=realType) :: omegaFourier
 
 end module inputTimeSpectral
 
@@ -758,11 +771,9 @@ module inputADjoint
   ! viscPC       : Whether or not to keep cross derivative terms
   !                in viscous preconditioner.
   ! FrozenTurbulence: Whether to use frozen turbulence assumption
-  ! restartADjoint: Whether or not we want to restart the adjoint
-  !                 from the previous solution
   ! useDiagTSPC   : Whether or not the off time instance terms are
   !                 included in the TS preconditioner.
-  logical :: setMonitor, ApproxPC, restartADjoint, useDiagTSPC
+  logical :: setMonitor, ApproxPC, useDiagTSPC
   logical :: frozenTurbulence, viscPC, ADPC
 
   ! ADjointSolverType: Type of linear solver for the ADjoint
@@ -770,6 +781,7 @@ module inputADjoint
   ! Matrix Ordering  : Type of matrix ordering to use
   ! LocalPCType      : Type of preconditioner to use on subdomains
   character(maxStringLen) :: ADjointSolverType
+  character(maxStringLen) :: GMRESOrthogType
   character(maxStringLen) :: PreCondType
   character(maxStringLen) :: matrixOrdering
   character(maxStringLen) :: adjointPCSide
@@ -787,10 +799,11 @@ module inputADjoint
   !                 It has a high impact on the required memory!
   ! adjMonStep    : Convergence monitor step
 
-  real(kind=realType)    :: adjRelTol
-  real(kind=realType)    :: adjAbsTol
-  real(kind=realType)    :: adjRelTolRel
-  real(kind=realType)    :: adjDivTol
+  real(kind=alwaysRealType)    :: adjRelTol
+  real(kind=alwaysRealType)    :: adjAbsTol
+  real(kind=alwaysRealType)    :: adjRelTolRel
+  real(kind=alwaysRealType)    :: adjDivTol
+  real(kind=realType) :: adjMaxL2Dev
   integer(kind=intType)  :: adjMaxIter
   integer(kind=intType)  :: adjRestart
   integer(kind=intType)  :: adjMonStep
@@ -858,6 +871,8 @@ module inputOverset
   real(kind=realType) :: selfZipCutoff
   ! nRefine: number of connectivity loops to run
   integer(kind=intType)::nRefine
+  integer(kind=intType)::nFloodIter
   logical :: useZipperMesh
   logical :: useOversetWallScaling
+  logical :: oversetDebugPrint
 end module inputOverset

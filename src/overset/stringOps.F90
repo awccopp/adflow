@@ -211,8 +211,8 @@ module stringOps
 
     ! Input/Output
     type(oversetString) :: master
-    type(oversetString), dimension(nStrings), target ::  strings
     integer(kind=intType) :: nStrings
+    type(oversetString), dimension(nStrings), target ::  strings
     logical, intent(in) :: debugZipper
 
     ! Workging
@@ -270,11 +270,13 @@ module stringOps
 
     ! Working:
     real(kind=realType) :: minEdge
-    integer(kind=intType) :: nUnqiue, i, n1, n2, nUnique
+    integer(kind=intType) :: nUnqiue, i, n1, n2, nUnique,idx
     integer(kind=intType), dimension(:), allocatable :: link
     real(kind=realType), dimension(:, :), allocatable :: uniqueNodes
     real(kind=realType), dimension(:, :), pointer :: nodeDataPtr
     integer(kind=intType) , dimension(:, :), pointer :: intNodeDataPtr
+    integer(kind=intType), dimension(:), allocatable :: normCounter
+    real(kind=realType), dimension(:, :), allocatable :: uniqueNorms
 
     ! We will do a sort of adaptive tolernace here: Get the minium edge
     ! length and base the tolerance on that:
@@ -290,6 +292,26 @@ module stringOps
     allocate(link(string%nNodes), uniqueNodes(3, string%nNodes))
 
     call pointReduce(string%x, string%nNodes, minEdge/1000.0, uniqueNodes, link, nUnique)
+
+    ! Now average the normals for any duplicate nodes. This is to handle any discrepancies
+    ! for h-type mesh topologies where the surface block is fully represented by the volume connectivity
+    allocate(normCounter(nUnique), uniqueNorms(3, nUnique))
+    normCounter(:)=zero
+    uniqueNorms(:,:) = zero
+    ! sum the norms for the unique node and count how many duplicates there are for a given node
+    do i = 1,string%nNodes
+       idx = link(i)
+       uniqueNorms(:,idx) =  uniqueNorms(:,idx)+ string%nodeData(4:6,i)
+       normCounter(idx) = normCounter(idx)+1
+    end do
+
+    ! Now divide to get the average and assign back to original data storage
+    do i = 1,string%nNodes
+       idx = link(i)
+       string%nodeData(4:6,i) = uniqueNorms(:,idx)/normCounter(idx)
+    end do
+    deallocate(normCounter, uniqueNorms)
+    ! Averageing is complete
 
     ! Update the connectivity to use the new set of nodes
     do i=1, string%nElems
@@ -357,7 +379,6 @@ module stringOps
 
              if (m(1) == n(1) .and. m(2) == n(2)) then
                 duplicateElement = .True.
-
              else if(m(1) == n(2) .and. m(2) == n(1)) then
                 ! Element exists, but it is the wrong order...don't
                 ! know what to do with this, probably an error or
@@ -1718,7 +1739,6 @@ module stringOps
          else
             nextI = prevNode(s, i)
          end if
-
          if (nextI == i .or. s%otherID(1, nextI) /= checkID) then
             ! We can't go any further than we already are
             iEnd = i
@@ -2019,7 +2039,7 @@ module stringOps
        write(101,*) 'TITLE = "PocketStrings Data" '
 
        write(101,*) 'Variables = "X" "Y" "Z" "Nx" "Ny" "Nz" "Vx" "Vy" "Vz" "ind" &
-            "gapID" "gapIndex" "otherID" "otherIndex" "ratio"'
+            &"gapID" "gapIndex" "otherID" "otherIndex" "ratio"'
        do i=1, nFullStrings
           ! Temporarily allocate otherID
           allocate(pocketStringsArr(i)%otherID(2, pocketStringsArr(i)%nNodes))
@@ -2501,8 +2521,8 @@ module stringOps
     implicit none
 
     ! Input/output
-    type(oversetString), dimension(nstrings), target :: strings
     integer(kind=intType), intent(in) :: nStrings
+    type(oversetString), dimension(nstrings), target :: strings
     logical, intent(in) :: debugZipper
 
     ! Working
@@ -2551,8 +2571,9 @@ module stringOps
        ! Loop over my nodes and search for it in master tree
        nodeLoop:do j=1, str%nNodes
 
-          ! Reinitialize initial maximum number of neighbours
-          nSearch = 50
+          ! Set the initial maximum number of neighbours
+          ! This can be at most the total number of nodes
+          nSearch = min(nAlloc, master%nNodes)
 
           ! We have to be careful since single-sided chains have only
           ! 1 neighbour at each end.
@@ -2783,11 +2804,12 @@ module stringOps
 
     use constants
     use utils, only : mynorm2
+    use commonFormats, only : sci12, int5
     implicit none
 
+    integer(kind=intType), intent(in) :: fileID, n
     type(oversetString), intent(in) :: str
     type(oversetString), intent(in), dimension(n) :: strings
-    integer(kind=intType), intent(in) :: fileID, n
     integer(kind=intType) :: i, j, id, index
     real(kind=realType), dimension(3) :: myPt, otherPT, vec
     real(kind=realType) :: maxH, dist, ratio
@@ -2800,19 +2822,18 @@ module stringOps
 
     write (fileID,*) "Nodes = ", str%nNodes, " Elements= ", str%nElems, " ZONETYPE=FELINESEG"
     write(fileID, *) "DATAPACKING=BLOCK"
-13  format (E20.12)
 
     ! Nodes
     do j=1,3
        do i=1, str%nNodes
-          write(fileID,13) str%x(j, i)
+          write(fileID, sci12) str%x(j, i)
        end do
     end do
 
     ! Node normal
     do j=1,3
        do i=1, str%nNodes
-          write(fileID,13) str%norm(j, i)
+          write(fileID, sci12) str%norm(j, i)
        end do
     end do
 
@@ -2829,38 +2850,38 @@ module stringOps
              vec = zero
           end if
 
-          write(fileID,13) vec(j)
+          write(fileID, sci12) vec(j)
        end do
     end do
 
     ! global node ID
     do i=1, str%nNodes
-       write(fileID,13) real(str%ind(i))
+       write(fileID, sci12) real(str%ind(i))
     end do
 
     ! gapID
     do i=1, str%nNodes
-       write(fileID,13) real(str%myID)
+       write(fileID, sci12) real(str%myID)
     end do
 
     ! gap Index
     do i=1, str%nNodes
-       write(fileID,13) real(i)
+       write(fileID, sci12) real(i)
     end do
 
     if (associated(str%otherID)) then
        ! otherID
        do i=1, str%nNodes
-          write(fileID,13) real(str%otherID(1, i))
+          write(fileID, sci12) real(str%otherID(1, i))
        end do
 
        ! other Index
        do i=1, str%nNodes
-          write(fileID,13) real(str%otherID(2, i))
+          write(fileID, sci12) real(str%otherID(2, i))
        end do
     else
        do i=1, 2*str%nNodes
-          write(fileID,13) zero
+          write(fileID, sci12) zero
        end do
     end if
 
@@ -2878,19 +2899,55 @@ module stringOps
           ratio = zero
        end if
 
-       write(fileID,13) ratio
+       write(fileID, sci12) ratio
     end do
 
-15  format(I5, I5)
     do i=1, str%nElems
-       write(fileID, 15) str%conn(1, i), str%conn(2, i)
+       write(fileID, int5) str%conn(1, i), str%conn(2, i)
     end do
 
   end subroutine writeOversetString
 
+  subroutine writeOversetMaster(str,fileID)
+
+    use constants
+    use utils, only : mynorm2
+    use commonFormats, only :  sci12, int5
+    implicit none
+
+    type(oversetString), intent(in) :: str
+    integer(kind=intType), intent(in) :: fileID
+    integer(kind=intType) :: i, j, id, index
+    real(kind=realType), dimension(3) :: myPt, otherPT, vec
+    real(kind=realType) :: maxH, dist, ratio
+
+    character(80) :: zoneName
+
+
+    write (zoneName,"(a,I5.5)") "Zone T=gap_", str%myID
+    write (fileID, *) trim(zoneName)
+
+    write (fileID,*) "Nodes = ", str%nNodes, " Elements= ", str%nElems, " ZONETYPE=FELINESEG"
+    write(fileID, *) "DATAPACKING=BLOCK"
+
+    ! Nodes
+    do j=1,3
+       do i=1, str%nNodes
+          write(fileID, sci12) str%x(j, i)
+       end do
+    end do
+
+    do i=1, str%nElems
+       write(fileID, int5) str%conn(1, i), str%conn(2, i)
+    end do
+
+  end subroutine writeOversetMaster
+
+
   subroutine writeOversetTriangles(string, fileName, startTri, endTri)
 
     use constants
+    use commonFormats, only : sci12
     implicit none
 
     type(oversetString), intent(inout) :: string
@@ -2908,19 +2965,17 @@ module stringOps
 
     write (101,*) "Nodes = ", string%nNodes, " Elements= ", (endTri-startTri+1), " ZONETYPE=FETRIANGLE"
     write (101,*) "DATAPACKING=POINT"
-13  format (E20.12)
 
     ! Write all the coordinates
     do i=1, string%nNodes
        do j=1, 3
-          write(101,13, advance='no') string%x(j, i)
+          write(101, sci12, advance='no') string%x(j, i)
        end do
        write(101,"(1x)")
     end do
 
-15  format(I7, I7, I7)
     do i=startTri, endTri
-       write(101, 15) string%tris(1, i), string%tris(2, i), string%tris(3, i)
+       write(101, "(*(I7))") string%tris(1, i), string%tris(2, i), string%tris(3, i)
     end do
     close(101)
   end subroutine writeOversetTriangles
@@ -2937,8 +2992,8 @@ module stringOps
     integer(kind=intType) :: i, j
 
     open(unit=101, file="debug.zipper", form='formatted')
-    write(101, *), str%nNodes
-    write(101, *), str%nElems
+    write(101, *) str%nNodes
+    write(101, *) str%nElems
     do i=1, str%nNodes
        do j=1, 10
           write (101,*) str%nodeData(j, i)
@@ -2972,8 +3027,8 @@ module stringOps
     integer(kind=intType) :: i, j
 
     open(unit=101, file=fileName, form='formatted')
-    read(101, *), str%nNodes
-    read(101, *), str%nElems
+    read(101, *) str%nNodes
+    read(101, *) str%nElems
     call nullifyString(str)
 
     allocate(str%nodeData(10, str%nNodes))

@@ -6,7 +6,7 @@
 PMAKE = make -j 4
 
 # ------- Define the MPI Compilers--------------------------------------
-FF90 = mpif90
+FF90 = mpifort
 CC   = mpicc
 
 # ------- Define Precision Flags ---------------------------------------
@@ -20,25 +20,17 @@ CC_INTEGER_PRECISION_FLAG   =
 CC_REAL_PRECISION_FLAG      =
 
 # ------- Define CGNS Inlcude and linker flags -------------------------
-# Define the CNGS include directory and linking flags for CGNSlib. We
-# can use 3.2.x OR CGNS 3.3+. You must define which version is being
-# employed as shown below. We are assuming that HDF5 came from PETSc
-# so it is included in ${PETSC_LIB}. Otherwise you will have to
-# specify the HDF5 library.
-
-# ----------- CGNS 3.2.x ------------------
-CGNS_VERSION_FLAG=
-CGNS_INCLUDE_FLAGS=-I$(HOME)/packages/cgnslib_3.2.1/src
-CGNS_LINKER_FLAGS=-L$(HOME)/packages/cgnslib_3.2.1/src -lcgns
-
-# # ----------- CGNS 3.3.x ------------------
-# CGNS_VERSION_FLAG=-DUSECGNSMODULE
-# CGNS_INCLUDE_FLAGS=-I$(HOME)/packages/CGNS/src
-# CGNS_LINKER_FLAGS=-L$(HOME)/packages/CGNS/src/lib -lcgns
+# Define the CGNS include directory and linking flags for the CGNS library.
+# We are assuming that HDF5 came from PETSc so it is included in ${PETSC_LIB}.
+# Otherwise you will have to specify the HDF5 library.
+CGNS_INCLUDE_FLAGS=-I$(CGNS_HOME)/include
+CGNS_LINKER_FLAGS=-L$(CGNS_HOME)/lib -lcgns
 
 # ------- Define Compiler Flags ----------------------------------------
-FF90_FLAGS = -DHAS_ISNAN  -fPIC -fdefault-real-8 -fdefault-double-8 -g  -O3 -march=native -ffast-math
-C_FLAGS   = -DHAS_ISNAN  -O -fPIC -g
+FF77_FLAGS = -fPIC -fdefault-real-8 -fdefault-double-8 -march=native
+FF90_FLAGS = $(FF77_FLAGS) -std=f2008
+FFXX_OPT_FLAGS = -O3 -ffast-math
+C_FLAGS   = -fPIC -O
 
 # ------- Define Archiver  and Flags -----------------------------------
 AR       = ar
@@ -54,11 +46,10 @@ PETSC_INCLUDE_FLAGS=${PETSC_CC_INCLUDES} -I$(PETSC_DIR)
 PETSC_LINKER_FLAGS=${PETSC_LIB}
 
 # Combine flags from above -- don't modify here
-# Combine flags from above -- don't modify here
 FF90_PRECISION_FLAGS = $(FF90_INTEGER_PRECISION_FLAG)$(FF90_REAL_PRECISION_FLAG)
 CC_PRECISION_FLAGS   = $(CC_INTEGER_PRECISION_FLAG) $(CC_REAL_PRECISION_FLAG)
 
 # Define potentially different python, python-config and f2py executables:
 PYTHON = python
-PYTHON-CONFIG = python-config
+PYTHON-CONFIG = python3-config # use python-config for python 2
 F2PY = f2py
