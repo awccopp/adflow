@@ -28,7 +28,7 @@ subroutine test(speed1, speed2, block_size)
     logical :: updateVars
 
     ! First call the residual routine to update all intermed. variables
-    call blocketteRes(useUpdateDt=.True.)
+    call blocketteRes(useUpdateIntermed=.True.)
 
     ! Disable blockette code for the first run
     useBlockettesSave = useBlockettes
@@ -41,7 +41,7 @@ subroutine test(speed1, speed2, block_size)
 
     do i = 1, nIter
         ! Call blockette code without vectorized routines
-        call blocketteRes(useUpdateDt=.True., useUpdateVars=updateVars)
+        call blocketteRes(useUpdateIntermed=.True., useUpdateVars=updateVars)
     end do
     call mpi_barrier(adflow_comm_world, ierr)
     timeB = mpi_wtime()
@@ -70,7 +70,7 @@ subroutine test(speed1, speed2, block_size)
     timeA = mpi_wtime()
     do i = 1, nIter
         ! Call blockette code with vectorized routines
-        call blocketteRes(useUpdateDt=.True., useUpdateVars=updateVars)
+        call blocketteRes(useUpdateIntermed=.True., useUpdateVars=updateVars)
     end do
     call mpi_barrier(adflow_comm_world, ierr)
     timeB = mpi_wtime()
@@ -140,7 +140,7 @@ subroutine test_b(speed1, speed2, block_size)
     real(kind=realType), pointer :: wb_pointer(:)
 
     ! First call the residual routine to update all intermed. variables
-    call blocketteRes(useUpdateDt=.True.)
+    call blocketteRes(useUpdateIntermed=.True.)
 
     ! We need to create a dummy AD seed, and an output vector to read the output
     nDimW = nw * nCellsLocal(1_intTYpe) * 1_intType
