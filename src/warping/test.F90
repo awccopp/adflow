@@ -59,7 +59,7 @@ subroutine test(speed1, speed2, block_size)
     call calcResNorm(norm)
 
     if (myid == 0) then
-        print *, 'speed1:', speed1, timeB - timeA, 0, isize, norm, bnx, bny, bnz
+        print *, 'speed1:', speed1, timeB - timeA, isize, norm, bnx, bny, bnz
     end if
 
     ! Enable the vectorized code for the second run
@@ -82,8 +82,11 @@ subroutine test(speed1, speed2, block_size)
     call calcResNorm(norm)
 
     if (myid == 0) then
-        print *, 'speed2:', speed2, timeB - timeA, loopCount, isize, norm, BS
+        print *, 'speed2:', speed2, timeB - timeA, isize, norm, BS
     end if
+    ! we used to print loopCount that counts how many blockettes we ran.
+    ! its a bit redundant now that the development is complete and we can easily compute how many blockettes ran.
+    ! However, it might be of interest again for GPUs.
     !print *, 'loop count:', loopCount, il, jl, kl
 
     ! Restore the useBlockettes option
