@@ -88,7 +88,7 @@ include $(DEP_FILE)
 
 # The 'lib' target builds the static archive. It depends on "sources".
 lib: sourcesNoOpt sources
-	$(AR) $(AR_FLAGS) libadflow.a $(OFILES_NO_OPT) $(OFILES)
+	$(AR) $(AR_FLAGS) libadflow.a $(OFILES_NO_OPT) $(OFILES) /home/awccopp/mdolab/adflow/src/build/matmul.o
 
 # These are the extra python objects for the python library
 PYTHON_OBJECTS = fortranobject.o\
@@ -141,6 +141,6 @@ python: lib ../f2py/adflow.pyf
 	$(FF90) $(FF90_ALL_FLAGS) -I./ -c libadflow-f2pywrappers2.f90
 
 # Final Link:
-	$(CC) -shared $(PYTHON_OBJECTS) libadflow.a $(LINKER_ALL_FLAGS) -o libadflow.so 
+	$(CC) -shared $(PYTHON_OBJECTS) libadflow.a $(LINKER_ALL_FLAGS) -o libadflow.so -cuda
 	$(PYTHON) importTest.py libadflow.so
 	mv libadflow.so ../../adflow
