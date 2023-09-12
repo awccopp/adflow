@@ -3893,6 +3893,7 @@ contains
                               real(atol), real(ANK_divTol), ank_maxIter, ierr)
         call EChk(ierr, __FILE__, __LINE__)
 
+
         call KSPSetResidualHistory(ANK_KSP, resHist, ank_maxIter + 1, PETSC_TRUE, ierr)
         call EChk(ierr, __FILE__, __LINE__)
 

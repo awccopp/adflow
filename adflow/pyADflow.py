@@ -33,6 +33,7 @@ from baseclasses.utils import Error, CaseInsensitiveDict
 from . import MExt
 import hashlib
 from collections import OrderedDict
+from importlib import import_module
 
 
 class ADFLOWWarning(object):
@@ -91,8 +92,8 @@ class ADFLOW(AeroSolver):
             self.adflow
         except AttributeError:
             curDir = os.path.basename(os.path.dirname(os.path.realpath(__file__)))
-            self.adflow = MExt.MExt("libadflow", curDir, debug=debug)._module
-
+            # self.adflow = MExt.MExt("libadflow", curDir, debug=debug)._module
+            self.adflow = import_module("libadflow")
         libLoadTime = time.time()
 
         # Information for base class:

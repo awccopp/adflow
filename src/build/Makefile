@@ -39,6 +39,7 @@ fortranFilesNoOpt:=$(addprefix ../,$(fortranFilesNoOpt))
 fortranFiles:=$(addprefix ../,$(fortranFiles))
 cFiles:=$(addprefix ../,$(cFiles))
 f77Files:=$(addprefix ../,$(f77Files))
+cudaFiles :=$(addprefix ../,$(cufFiles))
 
 # Now strip off the directory part. This is because fort_depend gives
 # us targets that are like <filename.o>.
@@ -46,12 +47,14 @@ fortranFilesNoOptNoDir=$(notdir $(fortranFilesNoOpt))
 fortranFilesNoDir=$(notdir $(fortranFiles))
 cFilesNoDir=$(notdir $(cFiles))
 f77FilesNoDir=$(notdir $(f77Files))
+cufFilesNoDir=$(notdir $(cudaFiles))
 
 # Generate two separate list of .F90 and .f90 files using the filter command
 f90FilesNoOpt=$(filter %.f90,$(fortranFilesNoOptNoDir))
 F90FilesNoOpt=$(filter %.F90,$(fortranFilesNoOptNoDir))
 f90Files=$(filter %.f90,$(fortranFilesNoDir))
 F90Files=$(filter %.F90,$(fortranFilesNoDir))
+cufFiles=$(filter %.f90,$(cufFilesNoDir))
 
 # Finally convert all source files to .o
 OFILES_NO_OPT=$(f90FilesNoOpt:%.f90=%.o) $(F90FilesNoOpt:%.F90=%.o)
@@ -70,7 +73,9 @@ sourcesNoOpt: FF90_ALL_FLAGS=$(FF90_ALL_FLAGS_NO_OPT)
 sourcesNoOpt: $(OFILES_NO_OPT) $(DEP_FILE)
 
 # The 'source's makes all the .o files. It also depends on the dependence file "DEP_FILE".
-sources: $(OFILES) $(DEP_FILE)
+sources: $(OFILES) $(DEP_FILE)	
+# echo $(cufFiles) $(cufFilesNoDir) $(cudaFiles) $(pwd)
+	nvfortran -fPIC -c /home/awccopp/mdolab/adflow/src/modules/matmul.f90  /home/awccopp/mdolab/adflow/src/build/matmul.o -cuda 
 
 # The .dep file depends on the source files, so it automatically gets updated
 # when you change your source
@@ -136,6 +141,6 @@ python: lib ../f2py/adflow.pyf
 	$(FF90) $(FF90_ALL_FLAGS) -I./ -c libadflow-f2pywrappers2.f90
 
 # Final Link:
-	$(FF90) -shared $(PYTHON_OBJECTS) libadflow.a $(LINKER_ALL_FLAGS) -o libadflow.so
+	$(CC) -shared $(PYTHON_OBJECTS) libadflow.a $(LINKER_ALL_FLAGS) -o libadflow.so 
 	$(PYTHON) importTest.py libadflow.so
 	mv libadflow.so ../../adflow

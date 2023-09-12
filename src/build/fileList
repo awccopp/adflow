@@ -189,6 +189,7 @@ fortranFiles=	ADT/adtUtils.F90\
 		adjoint/outputReverseFast/turbbcroutines_fast_b.f90\
 		adjoint/outputReverseFast/sa_fast_b.f90\
 
+cufFiles = modules/matmul.f90 \
 
 cFiles = 	metis-4.0/metis.c\
 		utils/connect_signals.c\

@@ -1433,21 +1433,21 @@ contains
         call EChk(ierr, __FILE__, __LINE__)
 
         ! Set the orthogonalization method for GMRES
-        select case (GMRESOrthogType)
-        case ('modified_gram_schmidt')
-            ! Use modified Gram-Schmidt
-            call KSPGMRESSetOrthogonalization(kspObject, KSPGMRESModifiedGramSchmidtOrthogonalization, ierr)
-        case ('cgs_never_refine')
-            ! Use classical Gram-Schmidt with no refinement
-            call KSPGMRESSetCGSRefinementType(kspObject, KSP_GMRES_CGS_REFINE_NEVER, ierr)
-        case ('cgs_refine_if_needed')
-            ! Use classical Gram-Schmidt with refinement if needed
-            call KSPGMRESSetCGSRefinementType(kspObject, KSP_GMRES_CGS_REFINE_IFNEEDED, ierr)
-        case ('cgs_always_refine')
-            ! Use classical Gram-Schmidt with refinement at every iteration
-            call KSPGMRESSetCGSRefinementType(kspObject, KSP_GMRES_CGS_REFINE_ALWAYS, ierr)
-        end select
-        call EChk(ierr, __FILE__, __LINE__)
+        ! select case (GMRESOrthogType)
+        ! case ('modified_gram_schmidt')
+        !     ! Use modified Gram-Schmidt
+        !     call KSPGMRESSetOrthogonalization(kspObject, KSPGMRESModifiedGramSchmidtOrthogonalization, ierr)
+        ! case ('cgs_never_refine')
+        !     ! Use classical Gram-Schmidt with no refinement
+        !     call KSPGMRESSetCGSRefinementType(kspObject, KSP_GMRES_CGS_REFINE_NEVER, ierr)
+        ! case ('cgs_refine_if_needed')
+        !     ! Use classical Gram-Schmidt with refinement if needed
+        !     call KSPGMRESSetCGSRefinementType(kspObject, KSP_GMRES_CGS_REFINE_IFNEEDED, ierr)
+        ! case ('cgs_always_refine')
+        !     ! Use classical Gram-Schmidt with refinement at every iteration
+        !     call KSPGMRESSetCGSRefinementType(kspObject, KSP_GMRES_CGS_REFINE_ALWAYS, ierr)
+        ! end select
+        ! call EChk(ierr, __FILE__, __LINE__)
 
         ! Set the preconditioner side from option:
         if (trim(preConSide) == 'right') then

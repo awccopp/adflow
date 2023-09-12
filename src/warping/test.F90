@@ -34,7 +34,7 @@ subroutine test(speed1, speed2, block_size)
     useBlockettesSave = useBlockettes
     useBlockettes = .False.
 
-    niter = 5
+    niter = 500
     block_size = BS
     call mpi_barrier(adflow_comm_world, ierr)
     timeA = mpi_wtime()
@@ -93,6 +93,147 @@ subroutine test(speed1, speed2, block_size)
     useBlockettes = useBlockettesSave
 
 end subroutine test
+
+subroutine test_block_only(speed, block_size)
+
+    use constants
+    use blockPointers, only: bnx => nx, bny => ny, bnz => nz, &
+                             bil => il, bjl => jl, bkl => kl, &
+                             bie => ie, bje => je, bke => ke, &
+                             bib => ib, bjb => jb, bkb => kb, &
+                             bw => w, bp => p, bgamma => gamma, &
+                             bx => x, brlv => rlv, brev => rev, bvol => vol, bVolRef => volRef, bd2wall => d2wall, &
+                             biblank => iblank, bPorI => porI, bPorJ => porJ, bPorK => porK, bdw => dw, bfw => fw
+    use utils
+    use block
+    use surfaceFamilies, only: fullFamList
+    use flowVarRefState
+    use communication, only: myid, adflow_comm_world
+    use blockette, only: blocketteRes, BS
+    use inputDiscretization, only: useBlockettes
+    implicit none
+
+    real(kind=realType), intent(out) :: speed
+    integer(kind=intType), intent(out) :: block_size
+
+    ! Misc
+    integer(kind=intType) :: i, j, k, l, iSize, nn, nIter, ii, jj, kk, iiter, loopCount, ierr
+    real(kind=realType) :: timeA, timeB, tmp, tmp2, norm
+    integer(kind=intType) :: omp_get_thread_num
+    logical :: useBlockettesSave
+    logical :: updateVars
+
+    ! First call the residual routine to update all intermed. variables
+    call blocketteRes(useUpdateIntermed=.True.)
+
+    ! Disable blockette code for the first run
+    useBlockettesSave = useBlockettes
+    useBlockettes = .False.
+
+    niter = 500
+    block_size = BS
+    call mpi_barrier(adflow_comm_world, ierr)
+    timeA = mpi_wtime()
+
+    do i = 1, nIter
+        ! Call blockette code without vectorized routines
+        call blocketteRes(useUpdateIntermed=.True., useUpdateVars=updateVars)
+    end do
+    call mpi_barrier(adflow_comm_world, ierr)
+    timeB = mpi_wtime()
+
+    iSize = 0
+    do nn = 1, nDom
+        call setPointers(nn, 1, 1)
+        iSize = iSize + bnx * bny * bnz
+        !print *,'dw:', dw(2,2,2,1), dw(2,2,2,6)
+        !print *, 'sum:', myid, sum(bdw(2:bil, 2:bjl, 2:bkl, 1:nw))
+    end do
+
+    speed = iSize * nIter / (timeB - timeA) / 1e6
+
+    call calcResNorm(norm)
+
+    if (myid == 0) then
+        print *, 'block speed:', speed, timeB - timeA, isize, norm, bnx, bny, bnz
+    end if
+
+    ! Restore the useBlockettes option
+    useBlockettes = useBlockettesSave
+
+end subroutine test_block_only
+
+subroutine test_blockette_only(speed, block_size)
+
+    use constants
+    use blockPointers, only: bnx => nx, bny => ny, bnz => nz, &
+                             bil => il, bjl => jl, bkl => kl, &
+                             bie => ie, bje => je, bke => ke, &
+                             bib => ib, bjb => jb, bkb => kb, &
+                             bw => w, bp => p, bgamma => gamma, &
+                             bx => x, brlv => rlv, brev => rev, bvol => vol, bVolRef => volRef, bd2wall => d2wall, &
+                             biblank => iblank, bPorI => porI, bPorJ => porJ, bPorK => porK, bdw => dw, bfw => fw
+    use utils
+    use block
+    use surfaceFamilies, only: fullFamList
+    use flowVarRefState
+    use communication, only: myid, adflow_comm_world
+    use blockette, only: blocketteRes, BS
+    use inputDiscretization, only: useBlockettes
+    implicit none
+
+    real(kind=realType), intent(out) :: speed
+    integer(kind=intType), intent(out) :: block_size
+
+    ! Misc
+    integer(kind=intType) :: i, j, k, l, iSize, nn, nIter, ii, jj, kk, iiter, loopCount, ierr
+    real(kind=realType) :: timeA, timeB, tmp, tmp2, norm
+    integer(kind=intType) :: omp_get_thread_num
+    logical :: useBlockettesSave
+    logical :: updateVars
+
+    ! First call the residual routine to update all intermed. variables
+    call blocketteRes(useUpdateIntermed=.True.)
+
+    niter = 500
+    block_size = BS
+    ! Enable the vectorized code for the second run
+    useBlockettes = .True.
+
+    call mpi_barrier(adflow_comm_world, ierr)
+    ! Test the blockette code
+    timeA = mpi_wtime()
+    do i = 1, nIter
+        ! Call blockette code with vectorized routines
+        call blocketteRes(useUpdateIntermed=.True., useUpdateVars=updateVars)
+    end do
+    call mpi_barrier(adflow_comm_world, ierr)
+    timeB = mpi_wtime()
+    iSize = 0
+    do nn = 1, nDom
+        call setPointers(nn, 1, 1)
+        iSize = iSize + bnx * bny * bnz
+        !print *,'dw:', dw(2,2,2,1), dw(2,2,2,6)
+        !print *, 'sum:', myid, sum(bdw(2:bil, 2:bjl, 2:bkl, 1:nw))
+    end do
+    !print *,'dw:', dw(2,2,2,1), dw(2,2,2,6)
+    !print *, 'sum:', myid, sum(bdw(2:bil, 2:bjl, 2:bkl, 1:nw))
+
+    speed = iSize * nIter / (timeB - timeA) / 1e6
+    call calcResNorm(norm)
+
+    if (myid == 0) then
+        print *, 'blockette speed:', speed, timeB - timeA, isize, norm, BS
+    end if
+    ! we used to print loopCount that counts how many blockettes we ran.
+    ! its a bit redundant now that the development is complete and we can easily compute how many blockettes ran.
+    ! However, it might be of interest again for GPUs.
+    !print *, 'loop count:', loopCount, il, jl, kl
+
+    ! Restore the useBlockettes option
+    useBlockettes = useBlockettesSave
+
+end subroutine test_blockette_only
 
 subroutine test_b(speed1, speed2, block_size)
 

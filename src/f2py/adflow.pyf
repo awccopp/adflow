@@ -792,12 +792,34 @@ python module libadflow
          real(kind=realtype) dimension(16) :: oversettimes
        end module oversetdata
 
+      !module f2py_api
+      !  subroutine my_matmult_api(a,b,n,c) ! in :test_f2py:f2py_api.f90
+      !      use cudafor
+      !      real(kind=8) dimension(:,:),intent(in) :: a
+      !      real(kind=8) dimension(:,:),intent(in) :: b
+      !      integer intent(in) :: n
+      !      real(kind=8) dimension(n,n),intent(out),depend(n) :: c
+      !  end subroutine my_matmult_api
+      !end module f2py_api
 ! ================ bare subroutines =============
         subroutine test(speed1, speed2, block_size)
           real(kind=realtype), intent(out) :: speed1, speed2
           integer(kind=inttype), intent(out) :: block_size
           logical :: updatevars
         end subroutine test
+
+
+        subroutine test_block_only(speed, block_size)
+          real(kind=realtype), intent(out) :: speed
+          integer(kind=inttype), intent(out) :: block_size
+          logical :: updatevars
+        end subroutine test_block_only
+
+        subroutine test_blockette_only(speed, block_size)
+          real(kind=realtype), intent(out) :: speed
+          integer(kind=inttype), intent(out) :: block_size
+          logical :: updatevars
+        end subroutine test_blockette_only
 
         subroutine test_b(speed1, speed2, block_size)
           real(kind=realtype), intent(out) :: speed1, speed2
